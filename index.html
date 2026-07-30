@@ -1554,6 +1554,9 @@
       if((b.vx > 0 && b.x > W+20) || (b.vx < 0 && b.x < -20)) birds.splice(i, 1);
     }
   }
+  function waveY(x){
+    return Math.sin(t*1.1 + x*0.045) * 1.4 + Math.sin(t*0.6 + x*0.09) * 0.7;
+  }
   function drawWater(offsetX){
     offsetX = offsetX || 0;
     var pad = Math.ceil(Math.abs(offsetX)) + 4;
@@ -1568,7 +1571,14 @@
     var totalH = H - SAND_H - SKY_H;
     for(var i=0;i<bands.length;i++){
       var bh = Math.round(totalH * bands[i].frac);
-      drawBand(y, y+bh, bands[i].c);
+      if(i === 0){
+        ctx.fillStyle = bands[i].c;
+        for(var wx=-pad; wx<W+pad; wx++){
+          ctx.fillRect(Math.round(wx+offsetX), Math.round(y + waveY(wx+offsetX)), 1, bh);
+        }
+      } else {
+        drawBand(y, y+bh, bands[i].c);
+      }
       ctx.fillStyle = 'rgba(255,255,255,0.07)';
       for(var x=-pad; x<W+pad; x+=2) ctx.fillRect(x+offsetX, y+bh-1, 1, 1);
       y += bh;
@@ -1582,7 +1592,24 @@
     for(var sx2=-pad+1; sx2<W+pad; sx2+=5) ctx.fillRect(sx2+offsetX, H-SAND_H+7, 2,2);
 
     ctx.fillStyle = lerpColorAlpha('#0c2032','#eaf8ff', df, 0.35+0.3*df);
-    ctx.fillRect(0, SKY_H-1, W, 2);
+    for(var lx=-pad; lx<W+pad; lx++){
+      ctx.fillRect(Math.round(lx+offsetX), Math.round(SKY_H-1 + waveY(lx+offsetX)), 1, 2);
+    }
+  }
+  function drawCaustics(offsetX){
+    var df = skyDayFactor;
+    var alpha = 0.045 + 0.085*df;
+    if(alpha <= 0.02) return;
+    var top = SKY_H + 6, bottom = H - SAND_H - 10;
+    if(bottom <= top) return;
+    ctx.fillStyle = 'rgba(255,255,255,' + alpha.toFixed(3) + ')';
+    var step = 4;
+    for(var yy=top; yy<bottom; yy+=step){
+      for(var xx=-8; xx<W+8; xx+=step){
+        var v = Math.sin((xx+offsetX)*0.05 + yy*0.12 + t*0.8) + Math.sin((xx+offsetX)*0.03 - yy*0.05 - t*0.5);
+        if(v > 1.5) ctx.fillRect(Math.round(xx+offsetX), yy, 2, 6);
+      }
+    }
   }
   function drawSparkles(dt){
     ctx.fillStyle = 'rgba(190,255,235,0.8)';
@@ -1683,6 +1710,59 @@
     }
   }
 
+  function drawBoat(pageIdx, offsetX){
+    offsetX = offsetX || 0;
+    var h = hashStr('boat-' + pageIdx);
+    var hullHue = h % 360;
+    var trimHue = (hullHue + 35) % 360;
+    var shirtHue = (h >> 6) % 360;
+    var hatHue = (h >> 13) % 360;
+    var skinHue = 22 + ((h >> 9) % 14);
+    var xFrac = 0.16 + ((h >> 16) % 68) / 100;
+    var faceDir = (h % 2 === 0) ? 1 : -1;
+    var bx = Math.round(W * xFrac) + offsetX;
+    var by = Math.round(SKY_H + waveY(bx) - 1);
+
+    /* hull */
+    ctx.fillStyle = 'hsl(' + trimHue + ' 55% 58%)';
+    ctx.fillRect(bx-9, by-6, 18, 1);
+    ctx.fillStyle = 'hsl(' + hullHue + ' 45% 34%)';
+    ctx.fillRect(bx-9, by-5, 18, 2);
+    ctx.fillStyle = 'hsl(' + hullHue + ' 42% 26%)';
+    ctx.fillRect(bx-7, by-3, 14, 1);
+    ctx.fillRect(bx-5, by-2, 10, 1);
+    ctx.fillRect(bx-2, by-1, 4, 1);
+
+    /* fisherman */
+    var px = bx + faceDir*2;
+    ctx.fillStyle = 'hsl(' + hatHue + ' 55% 45%)';
+    ctx.fillRect(px-1, by-11, 2, 1);
+    ctx.fillStyle = 'hsl(' + skinHue + ' 45% 55%)';
+    ctx.fillRect(px-1, by-10, 2, 2);
+    ctx.fillStyle = 'hsl(' + shirtHue + ' 55% 42%)';
+    ctx.fillRect(px-1, by-8, 2, 3);
+    ctx.fillStyle = 'hsl(' + skinHue + ' 45% 50%)';
+    ctx.fillRect(px + faceDir, by-7, 1, 1);
+
+    /* rod + line + bobber */
+    var rodBaseX = px + faceDir, rodBaseY = by-7;
+    var rodTipX = px + faceDir*10, rodTipY = by-10;
+    var steps = 8, i;
+    ctx.fillStyle = 'hsl(28 40% 30%)';
+    for(i=0;i<=steps;i++){
+      var lx = rodBaseX + (rodTipX-rodBaseX) * (i/steps);
+      var ly = rodBaseY + (rodTipY-rodBaseY) * (i/steps);
+      ctx.fillRect(Math.round(lx), Math.round(ly), 1, 1);
+    }
+    var waterAtLine = SKY_H + waveY(rodTipX);
+    ctx.fillStyle = 'rgba(15,15,15,0.5)';
+    var lineSteps = Math.max(1, Math.round(waterAtLine - rodTipY));
+    for(i=0;i<=lineSteps;i+=2) ctx.fillRect(rodTipX, Math.round(rodTipY+i), 1, 1);
+    var bobY = waterAtLine + Math.sin(t*3 + h)*0.6;
+    ctx.fillStyle = '#ff5a3d';
+    ctx.fillRect(rodTipX-1, Math.round(bobY), 2, 1);
+  }
+
   function hslAlpha(hslStr, alpha){
     return hslStr.replace(')', ' / ' + alpha + ')');
   }
@@ -1735,7 +1815,7 @@
   }
   function updateFish(f, dt){
     f.x += f.dir * f.speed * dt;
-    var top = DOCK_H + 4, bottom = H - SAND_H - f.h - 2;
+    var top = Math.max(DOCK_H, SKY_H) + 4, bottom = H - SAND_H - f.h - 2;
     if(bottom < top) bottom = top;
     if(f.x < -f.w){ f.x = -f.w; f.dir = 1; }
     if(f.x > W){ f.x = W; f.dir = -1; }
@@ -1771,6 +1851,7 @@
     drawClouds(parallax*0.35, dt);
     drawBirds(dt);
     drawWater(parallax);
+    drawCaustics(parallax);
     drawDecor(parallax);
     drawGlowMotes(dt);
     drawSparkles(dt);
@@ -1781,6 +1862,8 @@
       var pt = pageTransition;
       var offsetOut = -eased * W * pt.dir;
       var offsetIn = (1 - eased) * W * pt.dir;
+      drawBoat(pt.fromIndex, offsetOut);
+      drawBoat(pt.toIndex, offsetIn);
       for(var i=0;i<pt.fromFish.length;i++){
         drawFishGlow(pt.fromFish[i], false, offsetOut);
         drawFish(pt.fromFish[i], false, offsetOut);
@@ -1794,6 +1877,7 @@
         pageTransition = null;
       }
     } else {
+      drawBoat(pageIndex, 0);
       for(var k=0;k<fishes.length;k++){
         var f = fishes[k];
         updateFish(f, reducedMotion ? dt*0.25 : dt);
@@ -1890,7 +1974,7 @@
     if(pageTransition) return;
     if(newIndex < 0 || newIndex > totalPages()-1) return;
     var toFish = buildPageFish(newIndex);
-    pageTransition = { fromFish: fishes, toFish: toFish, dir: dir, startT: t, duration: reducedMotion ? 0.001 : 0.55 };
+    pageTransition = { fromFish: fishes, toFish: toFish, dir: dir, startT: t, duration: reducedMotion ? 0.001 : 0.55, fromIndex: pageIndex, toIndex: newIndex };
     pageIndex = newIndex;
     updatePageUI();
   }
