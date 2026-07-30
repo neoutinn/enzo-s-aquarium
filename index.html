@@ -157,6 +157,15 @@
   .sound-tab.show{ opacity:1; transform:translateY(0); }
   .sound-tab .frame-inner{ display:flex; align-items:center; gap:7px; padding:12px 14px; font-size:13px; font-family:'Silkscreen', monospace; font-weight:700; letter-spacing:.04em; color:var(--sand); }
   .sound-tab:hover .frame-inner{ color:var(--foam); }
+
+  .sky-tab{
+    position:fixed; top:64px; right:14px; z-index:22;
+    opacity:0; transform:translateY(-10px);
+    transition:opacity .5s ease, transform .5s ease, filter .15s ease;
+  }
+  .sky-tab.show{ opacity:1; transform:translateY(0); }
+  .sky-tab .frame-inner{ display:flex; align-items:center; gap:7px; padding:12px 14px; font-size:13px; font-family:'Silkscreen', monospace; font-weight:700; letter-spacing:.04em; color:var(--sand); }
+  .sky-tab:hover .frame-inner{ color:var(--foam); }
   .btn-icon{
     flex:none; display:block;
     image-rendering:pixelated; image-rendering:-moz-crisp-edges; image-rendering:crisp-edges;
@@ -352,6 +361,8 @@
     #dock{ right:100px; }
     #dock .frame-inner{ padding:8px 10px; gap:10px; }
     .sound-tab .frame-inner{ padding:8px 8px; font-size:9px; }
+    .sky-tab{ top:50px; }
+    .sky-tab .frame-inner{ padding:8px 8px; font-size:9px; }
     .keypad{ grid-template-columns:repeat(3, 50px); }
     .keypad button{ width:50px; height:40px; font-size:14px; }
   }
@@ -379,6 +390,9 @@
 
 <button id="soundToggle" class="hidden frame-outer frame-sm sound-tab" type="button">
   <span class="frame-inner"><canvas id="soundIcon" class="btn-icon" width="12" height="14"></canvas><span id="soundLabel">SOUND: ON</span></span>
+</button>
+<button id="skyToggle" class="hidden frame-outer frame-sm sky-tab" type="button">
+  <span class="frame-inner"><canvas id="skyIcon" class="btn-icon" width="14" height="14"></canvas><span id="skyLabel">SKY: CYCLE</span></span>
 </button>
 <button id="authorTab" class="hidden frame-outer frame-sm author-tab" type="button">
   <span class="frame-inner"><canvas id="authorIcon" class="btn-icon" width="7" height="7"></canvas><span id="authorLabel">AUTHOR</span></span>
@@ -621,6 +635,29 @@
   });
 
   /* =======================================================
+     DAY / NIGHT SKY MODE
+     ======================================================= */
+  var SKY_MODE_KEY = 'aquarium_sky_mode';
+  var SKY_MODE_ORDER = ['cycle', 'day', 'night'];
+  var SKY_MODE_LABEL = { cycle:'SKY: CYCLE', day:'SKY: DAY', night:'SKY: NIGHT' };
+  var skyMode = 'cycle';
+  try{
+    var storedSkyMode = localStorage.getItem(SKY_MODE_KEY);
+    if(SKY_MODE_ORDER.indexOf(storedSkyMode) !== -1) skyMode = storedSkyMode;
+  }catch(e){}
+
+  function setSkyMode(mode){
+    skyMode = mode;
+    try{ localStorage.setItem(SKY_MODE_KEY, mode); }catch(e){}
+    document.getElementById('skyLabel').textContent = SKY_MODE_LABEL[mode];
+    renderSkyIcon();
+  }
+  document.getElementById('skyToggle') && document.getElementById('skyToggle').addEventListener('click', function(){
+    var idx = SKY_MODE_ORDER.indexOf(skyMode);
+    setSkyMode(SKY_MODE_ORDER[(idx + 1) % SKY_MODE_ORDER.length]);
+  });
+
+  /* =======================================================
      PIXEL ICONS (hand-drawn bitmaps, no image assets)
      ======================================================= */
   var HOME_ICON = [
@@ -651,6 +688,15 @@
     "###.#."
   ];
   var MUTE_SLASH = [[0,6],[1,5],[2,4],[2,3],[3,2],[4,1],[5,0]];
+  var SKY_DISC = [
+    ".#####.",
+    "#######",
+    "#######",
+    "#######",
+    "#######",
+    "#######",
+    ".#####."
+  ];
 
   function drawBitmapIcon(canvas, bitmap, cell, color){
     if(!canvas) return;
@@ -678,8 +724,30 @@
     drawBitmapIcon(document.getElementById('homeIcon'), HOME_ICON, 2, '#f3fbf6');
     drawBitmapIcon(document.getElementById('authorIcon'), AUTHOR_ICON, 1, '#8fc2b8');
   }
+  function renderSkyIcon(){
+    var canvas = document.getElementById('skyIcon');
+    if(!canvas) return;
+    if(skyMode === 'cycle'){
+      var ictx = canvas.getContext('2d');
+      ictx.imageSmoothingEnabled = false;
+      ictx.clearRect(0, 0, canvas.width, canvas.height);
+      var cell = 2;
+      for(var r=0;r<SKY_DISC.length;r++){
+        var row = SKY_DISC[r];
+        for(var c=0;c<row.length;c++){
+          if(row[c] !== '#') continue;
+          ictx.fillStyle = c < 3.5 ? '#ffcf6b' : '#c9d6ff';
+          ictx.fillRect(c*cell, r*cell, cell, cell);
+        }
+      }
+    } else {
+      drawBitmapIcon(canvas, SKY_DISC, 2, skyMode === 'day' ? '#ffcf6b' : '#c9d6ff');
+    }
+  }
   renderStaticIcons();
   renderSoundIcon();
+  document.getElementById('skyLabel').textContent = SKY_MODE_LABEL[skyMode];
+  renderSkyIcon();
 
   /* =======================================================
      VIEW PASSWORD GATE (1006)
@@ -745,12 +813,14 @@
       gate.classList.remove('gate-exit');
       var dock = document.getElementById('dock');
       var soundTab = document.getElementById('soundToggle');
+      var skyTab = document.getElementById('skyToggle');
       var homeBtn = document.getElementById('homeBtn');
       dock.classList.remove('hidden');
       soundTab.classList.remove('hidden');
+      skyTab.classList.remove('hidden');
       homeBtn.classList.remove('hidden');
       document.getElementById('authorTab').classList.remove('hidden');
-      requestAnimationFrame(function(){ dock.classList.add('show'); soundTab.classList.add('show'); homeBtn.classList.add('show'); });
+      requestAnimationFrame(function(){ dock.classList.add('show'); soundTab.classList.add('show'); skyTab.classList.add('show'); homeBtn.classList.add('show'); });
     }, 520);
     loadLibrary();
   }
@@ -758,13 +828,16 @@
   function showHome(){
     var dock = document.getElementById('dock');
     var soundTab = document.getElementById('soundToggle');
+    var skyTab = document.getElementById('skyToggle');
     var homeBtn = document.getElementById('homeBtn');
     dock.classList.remove('show');
     soundTab.classList.remove('show');
+    skyTab.classList.remove('show');
     homeBtn.classList.remove('show');
     setTimeout(function(){
       dock.classList.add('hidden');
       soundTab.classList.add('hidden');
+      skyTab.classList.add('hidden');
       homeBtn.classList.add('hidden');
     }, 500);
     document.getElementById('authorTab').classList.add('hidden');
@@ -1187,10 +1260,15 @@
   var W = 0, H = 0;
   var DOCK_H = 30;
   var SAND_H = 14;
+  var SKY_H = 60;
   var fishes = [];
   var bubbles = [];
   var weeds = [];
   var sparkles = [];
+  var stars = [];
+  var clouds = [];
+  var birds = [];
+  var glowMotes = [];
   var running = false;
   var t = 0;
   var decor = [];
@@ -1200,9 +1278,48 @@
   }
   var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /* ---- color helpers for day/night blending ---- */
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+  function smoothstep(e0, e1, x){ var k = clamp01((x-e0)/(e1-e0)); return k*k*(3-2*k); }
+  function hexToRgb(hex){
+    var v = parseInt(hex.replace('#',''), 16);
+    return [(v>>16)&255, (v>>8)&255, v&255];
+  }
+  function lerpColor(hexA, hexB, k){
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = Math.round(a[0]+(b[0]-a[0])*k);
+    var g = Math.round(a[1]+(b[1]-a[1])*k);
+    var bl = Math.round(a[2]+(b[2]-a[2])*k);
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+  }
+  function lerpColorAlpha(hexA, hexB, k, alpha){
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = Math.round(a[0]+(b[0]-a[0])*k);
+    var g = Math.round(a[1]+(b[1]-a[1])*k);
+    var bl = Math.round(a[2]+(b[2]-a[2])*k);
+    return 'rgba(' + r + ',' + g + ',' + bl + ',' + alpha + ')';
+  }
+
+  /* ---- day / night cycle state ---- */
+  var DAYNIGHT_CYCLE_SECONDS = 120;
+  var skyPhase = 0.25, sunElevation = 1, moonElevation = -1, skyDayFactor = 1;
+  function getSkyPhase(){
+    if(skyMode === 'day') return 0.25;
+    if(skyMode === 'night') return 0.75;
+    return (t / DAYNIGHT_CYCLE_SECONDS) % 1;
+  }
+  function updateSkyState(){
+    skyPhase = getSkyPhase();
+    var angle = skyPhase * Math.PI * 2;
+    sunElevation = Math.sin(angle);
+    moonElevation = -sunElevation;
+    skyDayFactor = smoothstep(-0.12, 0.12, sunElevation);
+  }
+
   function resize(){
     W = Math.max(80, Math.floor(window.innerWidth / PIXEL_SCALE));
     H = Math.max(60, Math.floor(window.innerHeight / PIXEL_SCALE));
+    SKY_H = Math.max(36, Math.min(110, Math.round(H * 0.2)));
     canvas.width = W; canvas.height = H;
     canvas.style.width = '100vw';
     canvas.style.height = '100vh';
@@ -1212,7 +1329,7 @@
   window.addEventListener('resize', resize);
 
   function clampFish(f){
-    var top = DOCK_H + 4, bottom = H - SAND_H - f.h - 2;
+    var top = Math.max(DOCK_H, SKY_H) + 4, bottom = H - SAND_H - f.h - 2;
     if(bottom < top) bottom = top;
     if(f.x === 0 && f.y === 0){
       f.x = Math.random() * Math.max(1, W - f.w);
@@ -1245,7 +1362,7 @@
   function spawnBubble(anywhere){
     return {
       x: Math.random()*W,
-      y: anywhere ? Math.random()*(H-SAND_H) : H - SAND_H - Math.random()*4,
+      y: anywhere ? SKY_H + Math.random()*(H-SAND_H-SKY_H) : H - SAND_H - Math.random()*4,
       r: 1 + Math.floor(Math.random()*2),
       vy: 6 + Math.random()*10,
       wob: Math.random()*10
@@ -1256,7 +1373,7 @@
     for(var i=0;i<10;i++) sparkles.push(newSparkle());
   }
   function newSparkle(){
-    return { x: Math.random()*W, y: DOCK_H + Math.random()*40, life: Math.random()*2, max: 1.4+Math.random()*1.6 };
+    return { x: Math.random()*W, y: SKY_H + Math.random()*40, life: Math.random()*2, max: 1.4+Math.random()*1.6 };
   }
   function initDecor(){
     decor = [];
@@ -1268,34 +1385,204 @@
     decor.push({ type:'chest', x: W*0.15 + Math.random()*W*0.7 });
   }
 
+  /* ---- sky: stars, clouds, glow motes, birds ---- */
+  function initStars(){
+    stars = [];
+    var n = Math.max(18, Math.floor(W/14));
+    for(var i=0;i<n;i++){
+      stars.push({
+        x: Math.random()*W,
+        y: 4 + Math.random()*Math.max(4, SKY_H-10),
+        phase: Math.random()*10,
+        speed: 0.5 + Math.random()*1.2,
+        size: Math.random() < 0.15 ? 2 : 1
+      });
+    }
+  }
+  function newCloud(anywhere){
+    var dir = Math.random() < 0.5 ? 1 : -1;
+    return {
+      x: anywhere ? Math.random()*W : (dir > 0 ? -40 - Math.random()*40 : W + 40 + Math.random()*40),
+      y: 6 + Math.random()*Math.max(6, SKY_H*0.5),
+      speed: 2 + Math.random()*2.4,
+      scale: 0.7 + Math.random()*0.9,
+      dir: dir
+    };
+  }
+  function initClouds(){
+    clouds = [];
+    var n = 4 + Math.floor(Math.random()*2);
+    for(var i=0;i<n;i++) clouds.push(newCloud(true));
+  }
+  function newGlowMote(){
+    return {
+      x: Math.random()*W,
+      y: SKY_H + Math.random()*Math.max(1,(H-SAND_H-SKY_H)),
+      hue: 165 + Math.random()*60,
+      phase: Math.random()*10,
+      speed: 0.3 + Math.random()*0.4
+    };
+  }
+  function initGlowMotes(){
+    glowMotes = [];
+    for(var i=0;i<14;i++) glowMotes.push(newGlowMote());
+  }
+  function spawnBird(){
+    var fromLeft = Math.random() < 0.5;
+    birds.push({
+      x: fromLeft ? -14 : W+14,
+      y: 6 + Math.random()*Math.max(6, SKY_H*0.45),
+      vx: (fromLeft ? 1 : -1) * (10 + Math.random()*6),
+      bob: Math.random()*10,
+      flapPhase: Math.random()*10
+    });
+  }
+  function scheduleBird(){
+    var delay = 18000 + Math.random()*24000;
+    setTimeout(function(){
+      if(!reducedMotion) spawnBird();
+      scheduleBird();
+    }, delay);
+  }
+
   function drawBand(y0, y1, color){
     ctx.fillStyle = color;
     ctx.fillRect(0, y0, W, y1-y0);
   }
+  function drawSky(offsetX){
+    offsetX = offsetX || 0;
+    var df = skyDayFactor;
+    var topColor = lerpColor('#050914', '#8fd3ff', df);
+    var horizonColor = lerpColor('#131c30', '#eaf6ff', df);
+    var grad = ctx.createLinearGradient(0, 0, 0, SKY_H);
+    grad.addColorStop(0, topColor);
+    grad.addColorStop(1, horizonColor);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, SKY_H);
+
+    var starAlpha = 1 - df;
+    if(starAlpha > 0.02){
+      for(var i=0;i<stars.length;i++){
+        var s = stars[i];
+        var tw = 0.5 + 0.5*Math.sin(t*s.speed + s.phase);
+        ctx.fillStyle = 'rgba(255,255,255,' + (starAlpha*(0.35+0.5*tw)).toFixed(3) + ')';
+        ctx.fillRect(Math.round(s.x + offsetX*0.15), Math.round(s.y), s.size, s.size);
+      }
+    }
+
+    var centerX = W/2, radiusX = W*0.4;
+    var angle = skyPhase * Math.PI * 2;
+    function bodyY(elev){ var e = Math.max(0, elev); return 8 + (1-e) * Math.max(10, SKY_H-24); }
+
+    if(sunElevation > -0.12){
+      var sx = centerX - Math.cos(angle)*radiusX + offsetX*0.1;
+      var sy = bodyY(sunElevation);
+      var sAlpha = smoothstep(-0.12, 0.05, sunElevation);
+      var sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, 16);
+      sg.addColorStop(0, 'rgba(255,224,140,' + (0.55*sAlpha).toFixed(3) + ')');
+      sg.addColorStop(1, 'rgba(255,224,140,0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(sx, sy, 16, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,214,120,' + sAlpha.toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI*2); ctx.fill();
+    }
+    if(moonElevation > -0.12){
+      var mx = centerX + Math.cos(angle)*radiusX + offsetX*0.1;
+      var my = bodyY(moonElevation);
+      var mAlpha = smoothstep(-0.12, 0.05, moonElevation);
+      var mg = ctx.createRadialGradient(mx, my, 0, mx, my, 12);
+      mg.addColorStop(0, 'rgba(210,225,255,' + (0.4*mAlpha).toFixed(3) + ')');
+      mg.addColorStop(1, 'rgba(210,225,255,0)');
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.arc(mx, my, 12, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(223,232,255,' + mAlpha.toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(15,20,36,' + (0.55*mAlpha).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(mx+2, my-1, 3.4, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  function drawCloudShape(x, y, scale, color){
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x-10*scale), Math.round(y), Math.round(20*scale), Math.round(5*scale));
+    ctx.fillRect(Math.round(x-6*scale), Math.round(y-3*scale), Math.round(14*scale), Math.round(5*scale));
+    ctx.fillRect(Math.round(x+1*scale), Math.round(y-1*scale), Math.round(10*scale), Math.round(4*scale));
+  }
+  function drawClouds(offsetX, dt){
+    offsetX = offsetX || 0;
+    var color = lerpColorAlpha('#28324a', '#ffffff', skyDayFactor, 0.55);
+    for(var i=0;i<clouds.length;i++){
+      var c = clouds[i];
+      c.x += c.dir * c.speed * dt;
+      if(c.dir > 0 && c.x > W + 60){ clouds[i] = newCloud(false); clouds[i].dir = 1; continue; }
+      if(c.dir < 0 && c.x < -60){ clouds[i] = newCloud(false); clouds[i].dir = -1; continue; }
+      drawCloudShape(c.x + offsetX, c.y, c.scale, color);
+    }
+  }
+  function drawGlowMotes(dt){
+    var night = 1 - skyDayFactor;
+    if(night <= 0.02) return;
+    for(var i=0;i<glowMotes.length;i++){
+      var m = glowMotes[i];
+      var flick = 0.5 + 0.5*Math.sin(t*m.speed + m.phase);
+      var a = night * flick * 0.55;
+      if(a <= 0.02) continue;
+      ctx.fillStyle = 'hsl(' + m.hue + ' 90% 70% / ' + a.toFixed(3) + ')';
+      ctx.fillRect(Math.round(m.x), Math.round(m.y), 1, 1);
+    }
+  }
+  function drawBirds(dt){
+    var col = lerpColorAlpha('#0c1220', '#1b2436', skyDayFactor, 0.8);
+    for(var i=birds.length-1;i>=0;i--){
+      var b = birds[i];
+      b.x += b.vx*dt;
+      var flap = Math.sin(t*9 + b.flapPhase) > 0;
+      var by = Math.round(b.y + Math.sin(t*1.4+b.bob)*2);
+      var bx = Math.round(b.x);
+      ctx.fillStyle = col;
+      var wing = flap ? 0 : 1;
+      if(b.vx > 0){
+        ctx.fillRect(bx-3, by-wing, 2, 1);
+        ctx.fillRect(bx-1, by-(1-wing), 1, 1);
+        ctx.fillRect(bx, by-(1-wing), 1, 1);
+        ctx.fillRect(bx+1, by-wing, 2, 1);
+      } else {
+        ctx.fillRect(bx+1, by-wing, 2, 1);
+        ctx.fillRect(bx, by-(1-wing), 1, 1);
+        ctx.fillRect(bx-1, by-(1-wing), 1, 1);
+        ctx.fillRect(bx-3, by-wing, 2, 1);
+      }
+      if((b.vx > 0 && b.x > W+20) || (b.vx < 0 && b.x < -20)) birds.splice(i, 1);
+    }
+  }
   function drawWater(offsetX){
     offsetX = offsetX || 0;
     var pad = Math.ceil(Math.abs(offsetX)) + 4;
+    var df = skyDayFactor;
     var bands = [
-      { c:'#1a72ab', frac:0.30 },
-      { c:'#125b8c', frac:0.30 },
-      { c:'#0c4570', frac:0.22 },
-      { c:'#083154', frac:0.18 }
+      { c: lerpColor('#123a5c','#3fb3e6', df), frac:0.30 },
+      { c: lerpColor('#0c2846','#2a94cf', df), frac:0.30 },
+      { c: lerpColor('#081c33','#1c76ad', df), frac:0.22 },
+      { c: lerpColor('#051425','#125786', df), frac:0.18 }
     ];
-    var y = 0;
+    var y = SKY_H;
+    var totalH = H - SAND_H - SKY_H;
     for(var i=0;i<bands.length;i++){
-      var bh = Math.round((H-SAND_H) * bands[i].frac);
+      var bh = Math.round(totalH * bands[i].frac);
       drawBand(y, y+bh, bands[i].c);
       ctx.fillStyle = 'rgba(255,255,255,0.07)';
       for(var x=-pad; x<W+pad; x+=2) ctx.fillRect(x+offsetX, y+bh-1, 1, 1);
       y += bh;
     }
-    if(y < H - SAND_H) drawBand(y, H-SAND_H, '#083154');
-    ctx.fillStyle = '#8a5424';
+    if(y < H - SAND_H) drawBand(y, H-SAND_H, lerpColor('#051425','#125786', df));
+    ctx.fillStyle = lerpColor('#3d290f','#8a5424', df);
     ctx.fillRect(0, H-SAND_H, W, SAND_H);
-    ctx.fillStyle = 'rgba(255,205,120,0.28)';
+    ctx.fillStyle = 'rgba(255,205,120,' + (0.14+0.14*df).toFixed(3) + ')';
     for(var sx=-pad; sx<W+pad; sx+=3) ctx.fillRect(sx+offsetX + (sx%6===0?0:1), H-SAND_H+2, 1,1);
     ctx.fillStyle = 'rgba(60,30,8,0.35)';
     for(var sx2=-pad+1; sx2<W+pad; sx2+=5) ctx.fillRect(sx2+offsetX, H-SAND_H+7, 2,2);
+
+    ctx.fillStyle = lerpColorAlpha('#0c2032','#eaf8ff', df, 0.35+0.3*df);
+    ctx.fillRect(0, SKY_H-1, W, 2);
   }
   function drawSparkles(dt){
     ctx.fillStyle = 'rgba(190,255,235,0.8)';
@@ -1328,7 +1615,7 @@
       var b = bubbles[i];
       b.y -= b.vy*dt;
       var wobX = b.x + Math.sin(t*2 + b.wob) * 2;
-      if(b.y < DOCK_H){ bubbles[i] = spawnBubble(false); continue; }
+      if(b.y < SKY_H){ bubbles[i] = spawnBubble(false); continue; }
       ctx.fillRect(Math.round(wobX), Math.round(b.y), b.r, b.r);
     }
   }
@@ -1403,8 +1690,9 @@
     offsetX = offsetX || 0;
     var cx = f.x + offsetX + f.w/2, cy = f.y + f.h/2;
     var baseR = Math.max(f.w, f.h);
-    var r = baseR * (hovered ? 2.1 : 1.5);
-    var alpha = hovered ? 0.42 : 0.22;
+    var nightBoost = (1 - skyDayFactor) * 0.5;
+    var r = baseR * (hovered ? 2.1 : (1.5 + nightBoost*0.6));
+    var alpha = (hovered ? 0.42 : 0.22) + nightBoost*0.22;
     var grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
     grad.addColorStop(0, hslAlpha(f.palette['B'], alpha));
     grad.addColorStop(1, hslAlpha(f.palette['B'], 0));
@@ -1467,6 +1755,7 @@
     var dt = lastTs ? Math.min(0.05, (ts-lastTs)/1000) : 0.016;
     lastTs = ts;
     t += dt * (reducedMotion ? 0.35 : 1);
+    updateSkyState();
 
     ctx.clearRect(0,0,W,H);
 
@@ -1478,8 +1767,12 @@
       eased = easeInOutCubic(progress);
       parallax = -eased * W * pageTransition.dir * 0.28;
     }
+    drawSky(parallax*0.35);
+    drawClouds(parallax*0.35, dt);
+    drawBirds(dt);
     drawWater(parallax);
     drawDecor(parallax);
+    drawGlowMotes(dt);
     drawSparkles(dt);
     drawWeeds(parallax);
     drawBubbles(dt * (reducedMotion?0.4:1));
@@ -1616,6 +1909,10 @@
     initBubbles();
     initSparkles();
     initDecor();
+    initStars();
+    initClouds();
+    initGlowMotes();
+    scheduleBird();
     running = true;
     requestAnimationFrame(frame);
   }
