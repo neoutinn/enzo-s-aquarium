@@ -1,6 +1,5 @@
 # Enzo's Aquarium
 
-*A private tank where every fish is something someone wrote.*
 
 <p>
   <img alt="single file" src="https://img.shields.io/badge/build-single%20HTML%20file-3fb3e6?style=flat-square">
