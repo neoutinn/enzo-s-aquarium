@@ -1777,29 +1777,55 @@
     ctx.fill();
     ctx.globalCompositeOperation = prevOp;
   }
-  function drawFish(f, hovered, offsetX){
-    offsetX = offsetX || 0;
-    var rows = f.sprite;
-    var facingRight = f.dir > 0;
-    var bx = Math.round(f.x + offsetX), by = Math.round(f.y);
-    var cell = f.cell;
+  // Shared sprite renderer used by both the swimming tank fish and the
+  // zoomed modal portrait. Adds a silhouette outline, scale glints on the
+  // body, and ray striping on fins so sprites read as textured rather than
+  // flat color blocks — sprite art itself is untouched, this is a render pass.
+  function drawFishSprite(gctx, sprite, palette, originX, originY, cell, facingRight){
     var pupilSize = Math.max(1, Math.floor(cell/2));
-    for(var r=0;r<rows.length;r++){
-      var row = rows[r];
+    function filledAt(r,c){
+      if(r<0 || r>=sprite.length) return false;
+      var row = sprite[r];
+      if(c<0 || c>=row.length) return false;
+      return row[c] !== '.';
+    }
+    gctx.fillStyle = 'rgba(8,6,5,0.55)';
+    for(var r=0;r<sprite.length;r++){
+      var row = sprite[r];
       for(var c=0;c<row.length;c++){
-        var ch = row[c];
-        if(ch === '.') continue;
+        if(row[c] === '.') continue;
+        if(filledAt(r-1,c) && filledAt(r+1,c) && filledAt(r,c-1) && filledAt(r,c+1)) continue;
         var col = facingRight ? c : (row.length - 1 - c);
-        ctx.fillStyle = f.palette[ch];
-        ctx.fillRect(bx+col*cell, by+r*cell, cell, cell);
+        gctx.fillRect(originX+col*cell-1, originY+r*cell-1, cell+2, cell+2);
+      }
+    }
+    for(var r2=0;r2<sprite.length;r2++){
+      var row2 = sprite[r2];
+      for(var c2=0;c2<row2.length;c2++){
+        var ch = row2[c2];
+        if(ch === '.') continue;
+        var col2 = facingRight ? c2 : (row2.length - 1 - c2);
+        var px = originX+col2*cell, py = originY+r2*cell;
+        gctx.fillStyle = palette[ch];
+        gctx.fillRect(px, py, cell, cell);
         if(ch === 'E'){
-          var ex = bx+col*cell, ey = by+r*cell;
           var offX = facingRight ? cell-pupilSize : 0;
-          ctx.fillStyle = f.palette['P'];
-          ctx.fillRect(ex+offX, ey + Math.floor((cell-pupilSize)/2), pupilSize, pupilSize);
+          gctx.fillStyle = palette['P'];
+          gctx.fillRect(px+offX, py + Math.floor((cell-pupilSize)/2), pupilSize, pupilSize);
+        } else if((ch === 'B' || ch === 'b') && cell >= 3){
+          gctx.fillStyle = ((r2+c2) % 2 === 0) ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
+          gctx.fillRect(px, py, Math.ceil(cell/2), Math.ceil(cell/2));
+        } else if((ch === 'F' || ch === 'f' || ch === 'T') && cell >= 2 && c2 % 2 === 0){
+          gctx.fillStyle = 'rgba(0,0,0,0.15)';
+          gctx.fillRect(px, py, Math.max(1, Math.floor(cell/3)), cell);
         }
       }
     }
+  }
+  function drawFish(f, hovered, offsetX){
+    offsetX = offsetX || 0;
+    var bx = Math.round(f.x + offsetX), by = Math.round(f.y);
+    drawFishSprite(ctx, f.sprite, f.palette, bx, by, f.cell, f.dir > 0);
     if(hovered){
       ctx.strokeStyle = hslAlpha(f.palette['H'], 0.95);
       ctx.lineWidth = 1;
@@ -2095,20 +2121,7 @@
     modalFishCanvas.width = def.spriteW * cell;
     modalFishCanvas.height = def.spriteH * cell;
     mctx.imageSmoothingEnabled = false;
-    var pupilSize = Math.max(1, Math.floor(cell/2));
-    for(var r=0;r<def.sprite.length;r++){
-      var row = def.sprite[r];
-      for(var c=0;c<row.length;c++){
-        var ch = row[c];
-        if(ch === '.') continue;
-        mctx.fillStyle = def.palette[ch];
-        mctx.fillRect(c*cell, r*cell, cell, cell);
-        if(ch === 'E'){
-          mctx.fillStyle = def.palette['P'];
-          mctx.fillRect(c*cell + (cell-pupilSize), r*cell + Math.floor((cell-pupilSize)/2), pupilSize, pupilSize);
-        }
-      }
-    }
+    drawFishSprite(mctx, def.sprite, def.palette, 0, 0, cell, true);
   }
 
   function resetModalModes(){
