@@ -122,6 +122,9 @@
     image-rendering:-moz-crisp-edges;
     image-rendering:crisp-edges;
     cursor:default;
+    transform-origin: var(--gate-ox, 50%) var(--gate-oy, 40%);
+    transform: scale(var(--gate-zoom, 1));
+    transition: transform 900ms cubic-bezier(.22,.7,.24,1);
   }
   #tank.pointable{ cursor:pointer; }
 
@@ -762,12 +765,14 @@
       gateEntered = gateEntered.slice(0,-1);
       gateMsg.textContent = ' ';
       renderDots(gateDots, gateEntered);
+      updateGateZoomForEntry();
       return;
     }
     if(k === 'ok'){ tryUnlock(); return; }
     if(gateEntered.length >= 4) return;
     gateEntered += k;
     renderDots(gateDots, gateEntered);
+    updateGateZoomForEntry();
     if(gateEntered.length === 4){ tryUnlock(); }
   }
   function tryUnlock(){
@@ -782,6 +787,7 @@
       setTimeout(function(){ gate.classList.remove('shake'); }, 360);
       gateEntered = '';
       renderDots(gateDots, gateEntered);
+      updateGateZoomForEntry();
     }
   }
   keypad.addEventListener('click', function(e){
@@ -799,6 +805,7 @@
   function enterTank(){
     ensureAudio();
     if(soundEnabled) startAmbience();
+    setGateZoom(1);
     gate.classList.add('gate-exit');
     setTimeout(function(){
       gate.classList.add('hidden');
@@ -837,6 +844,12 @@
     gateEntered = '';
     renderDots(gateDots, gateEntered);
     gateMsg.textContent = ' ';
+    if(boat){
+      var homeXFrac = boatXFracForPage(0);
+      boat.curXFrac = boat.fromXFrac = boat.toXFrac = homeXFrac;
+    }
+    setGateOrigin();
+    updateGateZoomForEntry();
     gate.classList.add('gate-exit');
     gate.classList.remove('hidden');
     void gate.offsetWidth;
@@ -1265,6 +1278,7 @@
   var t = 0;
   var decor = [];
   var pageTransition = null;
+  var boat = null;
   function easeInOutCubic(x){
     return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x+2, 3)/2;
   }
@@ -1293,7 +1307,7 @@
   }
 
   /* ---- day / night cycle state ---- */
-  var DAYNIGHT_CYCLE_SECONDS = 120;
+  var DAYNIGHT_CYCLE_SECONDS = 480;
   var skyPhase = 0.25, sunElevation = 1, moonElevation = -1, skyDayFactor = 1;
   function getSkyPhase(){
     if(skyMode === 'day') return 0.25;
@@ -1305,7 +1319,7 @@
     var angle = skyPhase * Math.PI * 2;
     sunElevation = Math.sin(angle);
     moonElevation = -sunElevation;
-    skyDayFactor = smoothstep(-0.12, 0.12, sunElevation);
+    skyDayFactor = smoothstep(-0.28, 0.28, sunElevation);
   }
 
   function resize(){
@@ -1334,16 +1348,24 @@
     }
   }
 
+  var WEED_KINDS = ['blade','blade','blade','fan','kelp'];
   function initWeeds(){
     weeds = [];
-    var n = Math.max(4, Math.floor(W / 46));
+    var n = Math.max(8, Math.floor(W / 24));
     for(var i=0;i<n;i++){
+      var colorRoll = Math.random();
+      var hue = colorRoll < 0.78 ? (104 + Math.random()*56)   // mostly greens
+        : colorRoll < 0.92 ? (272 + Math.random()*46)          // occasional purple sea whip
+        : (186 + Math.random()*22);                             // occasional teal
       weeds.push({
         x: Math.round((i+0.5) * (W/n) + (Math.random()*10-5)),
         segs: 5 + Math.floor(Math.random()*4),
-        hue: 122 + Math.random()*38,
+        kind: WEED_KINDS[Math.floor(Math.random()*WEED_KINDS.length)],
+        hue: hue,
         speed: 0.6 + Math.random()*0.6,
-        phase: Math.random()*10
+        phase: Math.random()*10,
+        glow: Math.random() < 0.2,
+        glowHue: 165 + Math.random()*55
       });
     }
   }
@@ -1367,14 +1389,19 @@
   function newSparkle(){
     return { x: Math.random()*W, y: SKY_H + Math.random()*40, life: Math.random()*2, max: 1.4+Math.random()*1.6 };
   }
+  var DECOR_POOL = [
+    'rock','rock','shell','shell','starfish','coral','coral','pebbles','pebbles',
+    'coralReef','coralReef','anemone','anemone'
+  ];
   function initDecor(){
     decor = [];
-    var types = ['rock','shell','starfish','coral','pebbles'];
-    var n = Math.max(6, Math.floor(W / 70));
+    var n = Math.max(12, Math.floor(W / 40));
     for(var i=0;i<n;i++){
-      decor.push({ type: types[Math.floor(Math.random()*types.length)], x: Math.random()*W, hue: Math.random()*360 });
+      decor.push({ type: DECOR_POOL[Math.floor(Math.random()*DECOR_POOL.length)], x: Math.random()*W, hue: Math.random()*360 });
     }
     decor.push({ type:'chest', x: W*0.15 + Math.random()*W*0.7 });
+    decor.push({ type:'sandcastle', x: W*0.06 + Math.random()*W*0.18 });
+    decor.push({ type:'sandcastle', x: W*0.76 + Math.random()*W*0.18 });
   }
 
   /* ---- sky: stars, clouds, glow motes, birds ---- */
@@ -1614,19 +1641,44 @@
       if(a > 0.15) ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
     }
   }
+  // Soft additive glow used to make bioluminescent decor/weeds pop at night.
+  function drawGlowBloom(x, y, hue, alpha, r){
+    if(alpha <= 0.02) return;
+    var grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'hsla(' + hue + ',95%,72%,' + alpha.toFixed(3) + ')');
+    grad.addColorStop(1, 'hsla(' + hue + ',95%,72%,0)');
+    var prevOp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalCompositeOperation = prevOp;
+  }
   function drawWeeds(offsetX){
     offsetX = offsetX || 0;
+    var night = 1 - skyDayFactor;
     for(var i=0;i<weeds.length;i++){
       var w = weeds[i];
       var baseX = w.x + offsetX;
       var baseY = H - SAND_H;
+      var segs = w.kind === 'kelp' ? w.segs + 3 : w.segs;
+      var width = w.kind === 'fan' ? 3 : 2;
       ctx.fillStyle = 'hsl(' + w.hue + ' 88% 36%)';
-      for(var s=0; s<w.segs; s++){
-        var sway = Math.sin(t*w.speed + w.phase + s*0.6) * (s*0.55);
+      var tipX = baseX, tipY = baseY;
+      for(var s=0; s<segs; s++){
+        var swayAmp = w.kind === 'kelp' ? s*0.8 : s*0.55;
+        var sway = Math.sin(t*w.speed + w.phase + s*0.6) * swayAmp;
         var sx = Math.round(baseX + sway);
         var sy = baseY - s*3;
-        ctx.fillRect(sx, sy-3, 2, 3);
+        ctx.fillRect(sx, sy-3, width, 3);
+        if(w.kind === 'fan' && s > 1 && s % 2 === 0){
+          ctx.fillRect(sx-3, sy-2, 2, 2);
+          ctx.fillRect(sx+width+1, sy-2, 2, 2);
+        }
+        tipX = sx; tipY = sy-3;
       }
+      if(w.glow) drawGlowBloom(tipX + width/2, tipY, w.glowHue, 0.4*night, 6);
     }
   }
   function drawBubbles(dt){
@@ -1687,33 +1739,153 @@
     ctx.fillStyle = '#7a4d28';
     ctx.fillRect(x-7, baseY-1, 14, 1);
   }
+  function drawSandcastle(x, baseY){
+    ctx.fillStyle = '#d9a86a';
+    ctx.fillRect(x-6, baseY-6, 13, 6);
+    ctx.fillStyle = '#b8834a';
+    ctx.fillRect(x-6, baseY-1, 13, 1);
+    ctx.fillStyle = '#e6bb82';
+    ctx.fillRect(x-6, baseY-9, 3, 4);
+    ctx.fillRect(x+3, baseY-9, 3, 4);
+    ctx.fillStyle = '#c99760';
+    ctx.fillRect(x-6, baseY-9, 3, 1);
+    ctx.fillRect(x+3, baseY-9, 3, 1);
+    ctx.fillStyle = '#5c3a1e';
+    ctx.fillRect(x-1, baseY-4, 2, 4);
+    ctx.fillStyle = '#7a5230';
+    ctx.fillRect(x-5, baseY-11, 1, 3);
+    ctx.fillStyle = '#ff5a6a';
+    ctx.fillRect(x-4, baseY-11, 2, 2);
+  }
+  function drawCoralReef(x, baseY, hue, sway){
+    var hue2 = (hue + 42) % 360, hue3 = (hue + 300) % 360;
+    ctx.fillStyle = 'hsl(' + hue + ' 80% 60%)';
+    ctx.fillRect(x-1 + Math.round(sway*0.4), baseY-9, 2, 9);
+    ctx.fillRect(x-5 + Math.round(sway*0.6), baseY-5, 2, 5);
+    ctx.fillStyle = 'hsl(' + hue2 + ' 82% 62%)';
+    ctx.fillRect(x+4 + Math.round(sway*0.5), baseY-7, 2, 7);
+    ctx.fillRect(x+2 + Math.round(sway*0.3), baseY-3, 2, 3);
+    ctx.fillStyle = 'hsl(' + hue3 + ' 75% 65%)';
+    ctx.fillRect(x-2 + Math.round(sway*0.5), baseY-4, 2, 4);
+    ctx.fillStyle = 'hsl(' + hue + ' 95% 80%)';
+    ctx.fillRect(x-1 + Math.round(sway*0.4), baseY-10, 2, 1);
+    ctx.fillRect(x+4 + Math.round(sway*0.5), baseY-8, 2, 1);
+  }
+  function drawAnemone(x, baseY, hue){
+    ctx.fillStyle = 'hsl(' + hue + ' 40% 40%)';
+    ctx.fillRect(x-4, baseY-1, 9, 1);
+    for(var i=0;i<6;i++){
+      var sway = Math.sin(t*1.3 + i*1.1 + x) * 1.6;
+      var tx = x - 5 + i*2 + Math.round(sway*0.4);
+      var reach = 5 + Math.abs(Math.round(sway*0.5));
+      var h2 = (hue + i*14) % 360;
+      ctx.fillStyle = 'hsl(' + h2 + ' 85% 62%)';
+      ctx.fillRect(tx, baseY-reach, 1, reach-1);
+      ctx.fillStyle = 'hsl(' + h2 + ' 95% 78%)';
+      ctx.fillRect(tx, baseY-reach-1, 1, 1);
+    }
+  }
   function drawDecor(offsetX){
     offsetX = offsetX || 0;
     var baseY = H - SAND_H;
+    var night = 1 - skyDayFactor;
     for(var i=0;i<decor.length;i++){
       var d = decor[i];
       var sway = Math.sin(t*0.5 + i);
       var x = d.x + offsetX;
       if(d.type === 'rock') drawRock(x, baseY);
       else if(d.type === 'shell') drawShell(x, baseY, d.hue);
-      else if(d.type === 'starfish') drawStarfish(x, baseY, d.hue);
+      else if(d.type === 'starfish'){
+        drawStarfish(x, baseY, d.hue);
+        drawGlowBloom(x, baseY-2, d.hue, 0.26*night, 7);
+      }
       else if(d.type === 'coral') drawCoralBranch(x, baseY, d.hue, sway);
       else if(d.type === 'pebbles') drawPebbles(x, baseY, d.hue);
       else if(d.type === 'chest') drawChest(x, baseY);
+      else if(d.type === 'sandcastle') drawSandcastle(x, baseY);
+      else if(d.type === 'coralReef'){
+        drawCoralReef(x, baseY, d.hue, sway*3);
+        drawGlowBloom(x, baseY-6, d.hue, 0.3*night, 10);
+      }
+      else if(d.type === 'anemone'){
+        drawAnemone(x, baseY, d.hue);
+        drawGlowBloom(x, baseY-5, d.hue, 0.32*night, 9);
+      }
     }
   }
 
-  function drawBoat(pageIdx, offsetX){
-    offsetX = offsetX || 0;
-    var h = hashStr('boat-' + pageIdx);
-    var hullHue = h % 360;
-    var trimHue = (hullHue + 35) % 360;
-    var shirtHue = (h >> 6) % 360;
-    var hatHue = (h >> 13) % 360;
-    var skinHue = 22 + ((h >> 9) % 14);
-    var xFrac = 0.16 + ((h >> 16) % 68) / 100;
-    var faceDir = (h % 2 === 0) ? 1 : -1;
-    var bx = Math.round(W * xFrac) + offsetX;
+  // A single boat/fisherman persists across the whole session — only its
+  // target X position changes per page, and it sails there smoothly rather
+  // than being swapped for a freshly-randomized boat on every page flip.
+  function boatXFracForPage(pageIdx){
+    // Page 0 is where the boat sits behind the gate on first load — pin it
+    // near an outer edge so the zoomed-in fisherman isn't hidden behind the
+    // (nearly full-width) passcode card. Other pages stay randomized.
+    if(pageIdx === 0) return 0.08;
+    var h = hashStr('boat-pos-' + pageIdx);
+    return 0.16 + ((h >>> 16) % 68) / 100;
+  }
+  function initBoat(){
+    var h = hashStr('boat-identity');
+    var xFrac = boatXFracForPage(0);
+    boat = {
+      hullHue: h % 360,
+      trimHue: (h % 360 + 35) % 360,
+      shirtHue: (h >> 6) % 360,
+      hatHue: (h >> 13) % 360,
+      skinHue: 22 + ((h >> 9) % 14),
+      faceDir: (h % 2 === 0) ? 1 : -1,
+      bobSeed: h,
+      curXFrac: xFrac,
+      fromXFrac: xFrac,
+      toXFrac: xFrac,
+      transStart: 0,
+      transDur: 1.8 // slower than the page-flip itself, so the boat keeps sailing after the fish have settled
+    };
+  }
+  function setBoatTargetPage(pageIdx){
+    if(!boat) return;
+    boat.fromXFrac = boat.curXFrac;
+    boat.toXFrac = boatXFracForPage(pageIdx);
+    boat.transStart = t;
+  }
+  function updateBoat(){
+    if(!boat) return;
+    var progress = boat.transDur > 0 ? Math.min(1, (t - boat.transStart) / boat.transDur) : 1;
+    var eased = easeInOutCubic(progress);
+    boat.curXFrac = boat.fromXFrac + (boat.toXFrac - boat.fromXFrac) * eased;
+  }
+  function boatScreenX(){
+    return boat ? Math.round(W * boat.curXFrac) : Math.round(W * 0.5);
+  }
+
+  /* ---- gate camera: starts zoomed in on the boat, eases out as the code is typed ---- */
+  var GATE_ZOOM_START = 2.5;
+  function setGateOrigin(){
+    if(!boat) return;
+    var ox = boatScreenX(), oy = SKY_H;
+    canvas.style.setProperty('--gate-ox', (W ? (ox / W * 100) : 50) + '%');
+    canvas.style.setProperty('--gate-oy', (H ? (oy / H * 100) : 40) + '%');
+  }
+  function setGateZoom(scale){
+    canvas.style.setProperty('--gate-zoom', scale);
+  }
+  function updateGateZoomForEntry(){
+    setGateZoom(GATE_ZOOM_START + (1 - GATE_ZOOM_START) * (gateEntered.length / 4));
+  }
+  function initGateZoom(){
+    setGateOrigin();
+    canvas.style.transition = 'none';
+    setGateZoom(GATE_ZOOM_START);
+    void canvas.offsetWidth;
+    canvas.style.transition = '';
+  }
+
+  function drawBoat(){
+    if(!boat) return;
+    var hullHue = boat.hullHue, trimHue = boat.trimHue, shirtHue = boat.shirtHue,
+        hatHue = boat.hatHue, skinHue = boat.skinHue, faceDir = boat.faceDir;
+    var bx = boatScreenX();
     var by = Math.round(SKY_H + waveY(bx) - 1);
 
     /* hull */
@@ -1751,7 +1923,7 @@
     ctx.fillStyle = 'rgba(15,15,15,0.5)';
     var lineSteps = Math.max(1, Math.round(waterAtLine - rodTipY));
     for(i=0;i<=lineSteps;i+=2) ctx.fillRect(rodTipX, Math.round(rodTipY+i), 1, 1);
-    var bobY = waterAtLine + Math.sin(t*3 + h)*0.6;
+    var bobY = waterAtLine + Math.sin(t*3 + boat.bobSeed)*0.6;
     ctx.fillStyle = '#ff5a3d';
     ctx.fillRect(rodTipX-1, Math.round(bobY), 2, 1);
   }
@@ -1877,12 +2049,13 @@
     drawWeeds(parallax);
     drawBubbles(dt * (reducedMotion?0.4:1));
 
+    updateBoat();
+    drawBoat();
+
     if(pageTransition){
       var pt = pageTransition;
       var offsetOut = -eased * W * pt.dir;
       var offsetIn = (1 - eased) * W * pt.dir;
-      drawBoat(pt.fromIndex, offsetOut);
-      drawBoat(pt.toIndex, offsetIn);
       for(var i=0;i<pt.fromFish.length;i++){
         drawFishGlow(pt.fromFish[i], false, offsetOut);
         drawFish(pt.fromFish[i], false, offsetOut);
@@ -1896,7 +2069,6 @@
         pageTransition = null;
       }
     } else {
-      drawBoat(pageIndex, 0);
       for(var k=0;k<fishes.length;k++){
         var f = fishes[k];
         updateFish(f, reducedMotion ? dt*0.25 : dt);
@@ -1994,6 +2166,7 @@
     var toFish = buildPageFish(newIndex);
     pageTransition = { fromFish: fishes, toFish: toFish, dir: dir, startT: t, duration: reducedMotion ? 0.001 : 0.55, fromIndex: pageIndex, toIndex: newIndex };
     pageIndex = newIndex;
+    setBoatTargetPage(newIndex);
     updatePageUI();
   }
   function addToLibrary(record){
@@ -2014,6 +2187,8 @@
     initStars();
     initClouds();
     initGlowMotes();
+    initBoat();
+    initGateZoom();
     scheduleBird();
     running = true;
     requestAnimationFrame(frame);
