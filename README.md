@@ -2,7 +2,7 @@
 
 
 <p>
-  <img alt="single file" src="https://img.shields.io/badge/build-single%20HTML%20file-3fb3e6?style=flat-square">
+  <img alt="build" src="https://img.shields.io/badge/build-no%20bundler-3fb3e6?style=flat-square">
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-none-8a5424?style=flat-square">
   <img alt="storage" src="https://img.shields.io/badge/storage-IndexedDB%20(local)-125786?style=flat-square">
   <img alt="status" src="https://img.shields.io/badge/status-private-1c0f08?style=flat-square">
@@ -25,10 +25,10 @@ Click one to read it.
 ## What it is
 
 Enzo's Aquarium is a **writing journal disguised as a fish tank.** There's
-no server, no account system, no analytics — it's a single self-contained
-`index.html` file that runs entirely in the visitor's browser. Everything
-persists locally via IndexedDB, so what you see is whatever's actually
-stored on that device.
+no server, no account system, no analytics, no build step — just
+`index.html`, `style.css`, and `app.js`, running entirely in the visitor's
+browser. Everything persists locally via IndexedDB, so what you see is
+whatever's actually stored on that device.
 
 ## Features
 
@@ -79,15 +79,22 @@ delete or replace them from Author Mode once real writing goes in.
 
 ## Project structure
 
-It's one file, organized top to bottom as:
+Three files, no bundler — `index.html` just links the other two:
+
+| File | What lives there |
+|---|---|
+| `index.html` | Markup only: gate screen, canvas tank, dock controls, reading modal, create/admin overlays |
+| `style.css` | Layout, gate UI, dock, modal, and the pixel font (`@font-face`, embedded as base64 — this is why the file is large) |
+| `app.js` | Everything else, wrapped in one IIFE, organized top to bottom as: |
+
+`app.js`'s internal sections, in file order:
 
 | Section | What lives there |
 |---|---|
-| `<style>` | Layout, gate UI, dock, modal, and the pixel font (`@font-face`, embedded) |
-| Markup | Gate screen, canvas tank, dock controls, reading modal, create/admin overlays |
 | `IndexedDB layer` | `dbPut` / `dbGetAll` — the only persistence in the app |
 | `Sprite system` | ASCII pixel-art bodies (`DARTER_BASE`, `ANGEL_BASE`, `BETTA_BASE`) + per-species palettes in `SPECIES` |
-| `Tank renderer` | Sky, water, sand, decor, bubbles, weeds, and the fish themselves — all `<canvas>`, driven by `requestAnimationFrame` |
+| `Tank renderer` | Sky, water, sand, decor, bubbles, weeds, boat, plane/banner, and the fish themselves — all `<canvas>`, driven by `requestAnimationFrame` |
+| `Reel-in / splash` | The catch-to-read animation state machine and particle effects |
 | `Library ↔ tank bridge` | Pagination and the glue between stored records and live swimming fish |
 | `Modal` | The zoomed-in reading view, rendered at higher resolution from the same sprite data |
 
