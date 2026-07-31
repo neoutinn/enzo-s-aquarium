@@ -2023,6 +2023,8 @@
     dbGetAll().then(function(all){
       all.sort(function(a,b){ return a.addedAt - b.addedAt; });
       var ids = all.map(function(r){ return r.id; });
+      records = {};
+      library = [];
       all.forEach(addToLibrary);
       return seedLibrary(ids);
     }).then(function(){
