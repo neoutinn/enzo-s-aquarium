@@ -127,17 +127,14 @@
 
   /* ---------- dock / top bar ---------- */
   #dock{
-    position:fixed; top:14px; left:14px; right:155px;
+    position:fixed; top:14px; left:14px;
     z-index:20;
+    display:flex; align-items:center; gap:16px;
+    flex-wrap:wrap;
     opacity:0; transform:translateY(-10px);
     transition:opacity .5s ease, transform .5s ease;
   }
   #dock.show{ opacity:1; transform:translateY(0); }
-  #dock .frame-inner{
-    display:flex; align-items:center; gap:16px;
-    padding:11px 16px;
-    flex-wrap:wrap;
-  }
   .wordmark{
     font-family:'Press Start 2P', monospace;
     font-size:20px;
@@ -146,8 +143,7 @@
     letter-spacing:.03em;
     white-space:nowrap;
   }
-  .dock-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; align-items:center; }
-  #fishCount{ font-size:15px; color:var(--sand-dim); white-space:nowrap; }
+  .dock-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 
   .sound-tab{
     position:fixed; top:14px; right:14px; z-index:22;
@@ -358,8 +354,7 @@
 
   @media (max-width:640px){
     .wordmark{ font-size:13px; }
-    #dock{ right:100px; }
-    #dock .frame-inner{ padding:8px 10px; gap:10px; }
+    #dock{ gap:10px; }
     .sound-tab .frame-inner{ padding:8px 8px; font-size:9px; }
     .sky-tab{ top:50px; }
     .sky-tab .frame-inner{ padding:8px 8px; font-size:9px; }
@@ -377,14 +372,11 @@
   </div>
 </div>
 
-<header id="dock" class="hidden frame-outer">
-  <div class="frame-inner">
-    <span class="wordmark">ENZO'S AQUARIUM</span>
-    <span id="fishCount">0 FISH IN THE TANK</span>
-    <div class="dock-actions">
-      <button class="btn coral hidden" id="newFishBtn" type="button">+ NEW FISH</button>
-      <button class="btn ghost hidden" id="showJsonBtn" type="button">LIBRARY DATA</button>
-    </div>
+<header id="dock" class="hidden">
+  <span class="wordmark">ENZO'S AQUARIUM</span>
+  <div class="dock-actions">
+    <button class="btn coral hidden" id="newFishBtn" type="button">+ NEW FISH</button>
+    <button class="btn ghost hidden" id="showJsonBtn" type="button">LIBRARY DATA</button>
   </div>
 </header>
 
@@ -1956,7 +1948,6 @@
     document.getElementById('pagePrev').disabled = pageIndex <= 0;
     document.getElementById('pageNext').disabled = pageIndex >= tp - 1;
     document.getElementById('pageNav').classList.toggle('hidden', library.length <= PAGE_SIZE);
-    document.getElementById('fishCount').textContent = library.length + ' FISH IN THE TANK';
     document.getElementById('emptyState').classList.toggle('hidden', library.length !== 0);
   }
   function buildPageFish(idx){
