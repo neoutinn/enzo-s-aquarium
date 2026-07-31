@@ -1,4 +1,4 @@
-# 🐠 Enzo's Aquarium
+# Enzo's Aquarium
 
 *A private tank where every fish is something someone wrote.*
 
@@ -18,8 +18,7 @@
 ```
 
 Enter a passcode, and the gate opens onto a pixel-art tank. Every fish
-swimming past is a real piece of writing — a poem, an essay, a stray
-thought — hatched by the author and drifting under a day/night sky.
+swimming past is a personal piece of writing hatched by the author (me) and drifting under a day/night sky.
 Click one to read it.
 
 ---
