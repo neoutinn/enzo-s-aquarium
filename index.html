@@ -1450,7 +1450,7 @@
     grad.addColorStop(0, topColor);
     grad.addColorStop(1, horizonColor);
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, SKY_H);
+    ctx.fillRect(0, 0, W, SKY_H + 3); // +3 covers waveY()'s max dip so no gap shows through at the waterline
 
     var starAlpha = 1 - df;
     if(starAlpha > 0.02){
@@ -1566,7 +1566,8 @@
       if(i === 0){
         ctx.fillStyle = bands[i].c;
         for(var wx=-pad; wx<W+pad; wx++){
-          ctx.fillRect(Math.round(wx+offsetX), Math.round(y + waveY(wx+offsetX)), 1, bh);
+          // +3 stretches past the flat band below so a raised wave crest never gaps at the seam
+          ctx.fillRect(Math.round(wx+offsetX), Math.round(y + waveY(wx+offsetX)), 1, bh + 3);
         }
       } else {
         drawBand(y, y+bh, bands[i].c);
