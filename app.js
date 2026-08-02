@@ -747,6 +747,7 @@
   var planeBanner = null;
   var reelAnim = null;
   var splashes = [];
+  var confetti = [];
   var running = false;
   var t = 0;
   var decor = [];
@@ -1569,8 +1570,13 @@
     ctx.fillRect(bx-5, by-2, 10, 1);
     ctx.fillRect(bx-2, by-1, 4, 1);
 
-    /* fisherman */
-    var px = bx + faceDir*2;
+    var reelPhase = reelAnim ? reelAnim.phase : null;
+
+    /* fisherman: leans away from the boat when the fish makes a hard run */
+    var lean = reelPhase === 'pull'
+      ? -faceDir * Math.round((reelAnim.fightIntensity||0) * 2)
+      : 0;
+    var px = bx + faceDir*2 + lean;
     ctx.fillStyle = 'hsl(' + hatHue + ' 55% 45%)';
     ctx.fillRect(px-1, by-11, 2, 1);
     ctx.fillStyle = 'hsl(' + skinHue + ' 45% 55%)';
@@ -1580,9 +1586,25 @@
     ctx.fillStyle = 'hsl(' + skinHue + ' 45% 50%)';
     ctx.fillRect(px + faceDir, by-7, 1, 1);
 
-    /* rod + line + bobber */
+    if(reelPhase === 'victory'){
+      /* arm raised overhead, holding the catch up in the air */
+      ctx.fillStyle = 'hsl(' + skinHue + ' 45% 50%)';
+      for(var ay = by-8; ay >= by-16; ay--) ctx.fillRect(px + faceDir, ay, 1, 1);
+      return;
+    }
+
+    /* rod + line + bobber, bending toward the fish while one is hooked */
     var rodBaseX = px + faceDir, rodBaseY = by-7;
-    var rodTipX = px + faceDir*10, rodTipY = by-10;
+    var baseTipX = px + faceDir*10, baseTipY = by-10;
+    var rodTipX = baseTipX, rodTipY = baseTipY;
+    var fcx = null, fcy = null;
+    if((reelPhase === 'pull' || reelPhase === 'rise') && reelAnim.fish){
+      var hf = reelAnim.fish;
+      fcx = hf.x + hf.w/2; fcy = hf.y + hf.h/2;
+      var bendK = reelPhase === 'pull' ? (0.3 + 0.4*(reelAnim.fightIntensity||0)) : 0.15;
+      rodTipX = baseTipX + (fcx - baseTipX) * bendK;
+      rodTipY = baseTipY + (fcy - baseTipY) * bendK;
+    }
     var steps = 8, i;
     ctx.fillStyle = 'hsl(28 40% 30%)';
     for(i=0;i<=steps;i++){
@@ -1590,13 +1612,23 @@
       var ly = rodBaseY + (rodTipY-rodBaseY) * (i/steps);
       ctx.fillRect(Math.round(lx), Math.round(ly), 1, 1);
     }
-    var waterAtLine = SKY_H + waveY(rodTipX);
-    ctx.fillStyle = 'rgba(15,15,15,0.5)';
-    var lineSteps = Math.max(1, Math.round(waterAtLine - rodTipY));
-    for(i=0;i<=lineSteps;i+=2) ctx.fillRect(rodTipX, Math.round(rodTipY+i), 1, 1);
-    var bobY = waterAtLine + Math.sin(t*3 + boat.bobSeed)*0.6;
-    ctx.fillStyle = '#ff5a3d';
-    ctx.fillRect(rodTipX-1, Math.round(bobY), 2, 1);
+    if(fcx !== null){
+      /* taut line straight to the hooked, fighting fish */
+      ctx.fillStyle = 'rgba(15,15,15,0.55)';
+      var lineLen = Math.max(1, Math.round(Math.hypot(fcx-rodTipX, fcy-rodTipY) / 2));
+      for(i=0;i<=lineLen;i++){
+        var lt = i/lineLen;
+        ctx.fillRect(Math.round(rodTipX + (fcx-rodTipX)*lt), Math.round(rodTipY + (fcy-rodTipY)*lt), 1, 1);
+      }
+    } else {
+      var waterAtLine = SKY_H + waveY(rodTipX);
+      ctx.fillStyle = 'rgba(15,15,15,0.5)';
+      var lineSteps = Math.max(1, Math.round(waterAtLine - rodTipY));
+      for(i=0;i<=lineSteps;i+=2) ctx.fillRect(rodTipX, Math.round(rodTipY+i), 1, 1);
+      var bobY = waterAtLine + Math.sin(t*3 + boat.bobSeed)*0.6;
+      ctx.fillStyle = '#ff5a3d';
+      ctx.fillRect(rodTipX-1, Math.round(bobY), 2, 1);
+    }
   }
 
   /* ---- splash particles: droplets + expanding ripple rings ---- */
@@ -1643,7 +1675,58 @@
     }
   }
 
-  /* ---- reel-in: clicking a fish hooks it, pulls it to the boat, then opens it ---- */
+  /* ---- confetti particles: the victory burst when a fish is landed ---- */
+  function spawnConfetti(x, y, power){
+    power = power || 1;
+    var n = Math.floor((18 + Math.random()*8) * power);
+    for(var i=0;i<n;i++){
+      var ang = -Math.PI/2 + (Math.random()-0.5)*Math.PI*1.6;
+      var spd = (16 + Math.random()*24) * power;
+      confetti.push({
+        x: x, y: y,
+        vx: Math.cos(ang)*spd,
+        vy: Math.sin(ang)*spd,
+        hue: Math.random()*360,
+        size: Math.random() < 0.5 ? 1 : 2,
+        life: 0, max: 0.7 + Math.random()*0.6
+      });
+    }
+  }
+  function updateDrawConfetti(dt){
+    for(var i=confetti.length-1;i>=0;i--){
+      var c = confetti[i];
+      c.life += dt;
+      if(c.life >= c.max){ confetti.splice(i,1); continue; }
+      c.vy += 42*dt;
+      c.x += c.vx*dt;
+      c.y += c.vy*dt;
+      var alpha = 1 - c.life/c.max;
+      ctx.fillStyle = 'hsla(' + Math.round(c.hue) + ',85%,62%,' + alpha.toFixed(3) + ')';
+      ctx.fillRect(Math.round(c.x - c.size/2), Math.round(c.y - c.size/2), c.size, c.size);
+    }
+  }
+
+  /* ---- reel-in: clicking a fish hooks it, fights it to the boat, then
+     hoists it up in victory before opening it ---- */
+  // Three decaying "runs" the hooked fish makes against the line over the
+  // course of the pull — read by both the fish's own wiggle and the rod bend
+  // drawn in drawBoat, so the fight and the visual feedback stay in sync.
+  function fightJerk(k){
+    var runs = [0.14, 0.42, 0.7];
+    var v = 0;
+    for(var i=0;i<runs.length;i++){
+      var d = k - runs[i];
+      v += Math.exp(-d*d*150) * (1 - i*0.2);
+    }
+    return Math.min(1, v);
+  }
+  function victoryHoldPos(f){
+    var bx = boatScreenX();
+    var by = Math.round(SKY_H + waveY(bx) - 1);
+    var raiseX = bx + boat.faceDir*3;
+    var raiseY = by - 17;
+    return { x: raiseX - f.w/2, y: raiseY - f.h };
+  }
   function startReelIn(f){
     if(reelAnim || pageTransition) return;
     var idx = fishes.indexOf(f);
@@ -1656,8 +1739,11 @@
       waterX: tip.waterX, waterY: tip.waterY,
       tipX: tip.x, tipY: tip.y,
       startT: t,
-      pullDuration: 0.95 + Math.random()*0.2,
-      riseDuration: 0.38,
+      pullDuration: 1.3 + Math.random()*0.35,
+      riseDuration: 0.4,
+      victoryDuration: 0.9,
+      seed: hashStr('reel-' + f.id) % 1000,
+      fightIntensity: 0,
       phase: 'pull'
     };
     sFish();
@@ -1669,10 +1755,24 @@
       var k = Math.min(1, (t - ra.startT) / ra.pullDuration);
       var eased = easeInOutCubic(k);
       var targetX = ra.waterX - f.w/2, targetY = ra.waterY - f.h;
-      var wiggle = (1-eased) * Math.sin(t*22) * (f.w*0.3);
-      f.x = ra.startX + (targetX - ra.startX) * eased + wiggle;
-      f.y = ra.startY + (targetY - ra.startY) * eased;
+      var baseX = ra.startX + (targetX - ra.startX) * eased;
+      var baseY = ra.startY + (targetY - ra.startY) * eased;
+
+      // fight is expressed as a pull-away burst (along the start->boat axis)
+      // plus a perpendicular thrash, both layered on top of the base path
+      var dx = targetX - ra.startX, dy = targetY - ra.startY;
+      var len = Math.max(1, Math.hypot(dx, dy));
+      var awayX = -dx/len, awayY = -dy/len;
+      var perpX = -dy/len, perpY = dx/len;
+      var jerk = fightJerk(k);
+      var away = jerk * (f.w*0.55 + 6);
+      var shake = Math.sin(t*23 + ra.seed) * (f.h*0.3) * (1 - k*0.5);
+
+      f.x = baseX + awayX*away + perpX*shake;
+      f.y = baseY + awayY*away + perpY*shake;
       f.dir = (targetX >= ra.startX) ? 1 : -1;
+      ra.fightIntensity = jerk;
+
       if(k >= 1){
         spawnSplash(ra.waterX, ra.waterY, 1);
         sSplash();
@@ -1688,6 +1788,21 @@
       f.x = ra.waterX - f.w/2;
       f.y = fromY + (ra.tipY - fromY) * reased;
       if(rk >= 1){
+        ra.phase = 'victory';
+        ra.victoryStart = t;
+        var vp = victoryHoldPos(f);
+        ra.holdX = vp.x; ra.holdY = vp.y;
+        f.x = vp.x; f.y = vp.y;
+        spawnConfetti(vp.x + f.w/2, vp.y, 1.2);
+        sSuccess();
+      }
+      return;
+    }
+    if(ra.phase === 'victory'){
+      var vk = Math.min(1, (t - ra.victoryStart) / ra.victoryDuration);
+      f.x = ra.holdX;
+      f.y = ra.holdY + Math.sin(t*4 + ra.seed)*0.5;
+      if(vk >= 1){
         var id = f.id;
         reelAnim = null;
         openFish(id);
@@ -1887,13 +2002,14 @@
     drawBubbles(dt * (reducedMotion?0.4:1));
 
     updateBoat();
-    drawBoat();
     updateReelAnim();
+    drawBoat();
     if(reelAnim){
-      drawFishGlow(reelAnim.fish, false);
+      drawFishGlow(reelAnim.fish, reelAnim.phase === 'victory');
       drawFish(reelAnim.fish, false);
     }
     updateDrawSplashes(dt);
+    updateDrawConfetti(dt);
 
     if(pageTransition){
       var pt = pageTransition;
