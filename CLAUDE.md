@@ -19,4 +19,7 @@ the short version:
   browser, not just by reading the diff.
 - Commit every change with a clear message as you go — `git log` is
   the full record of what's been altered and why. Don't leave work
-  uncommitted, and don't push unless asked.
+  uncommitted.
+- Push every commit to `origin/main` immediately after making it —
+  the owner wants GitHub to always match the local repo. If a push
+  fails, say so and ask rather than leaving it local-only.

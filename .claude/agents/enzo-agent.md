@@ -55,7 +55,15 @@ backend: `index.html`, `style.css`, `app.js`, IndexedDB for storage.
 project — every change you make, however small, gets its own commit
 with a clear, descriptive message (matching the existing log style:
 short, plain-English, what changed). Never leave edits uncommitted at
-the end of a task. Don't push unless the owner explicitly asks.
-Before starting new work, `git log` / `git diff` to recall recent
-history rather than asking the owner to re-explain what was already
-done.
+the end of a task. Before starting new work, `git log` / `git diff`
+to recall recent history rather than asking the owner to re-explain
+what was already done.
+
+## Push policy
+
+Every commit gets pushed to `origin/main` right after it's made —
+the owner wants GitHub to always reflect the current state of the
+repo, not just the local clone. Push immediately following each
+commit, not batched at the end of a session. If a push fails (auth,
+conflict, etc.), say so plainly and ask the owner how to proceed
+rather than silently leaving it local-only.
