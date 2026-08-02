@@ -1482,8 +1482,11 @@
   function boatXFracForPage(pageIdx){
     // Page 0 is where the boat sits behind the gate on first load — pin it
     // near an outer edge so the zoomed-in fisherman isn't hidden behind the
-    // (nearly full-width) passcode card. Other pages stay randomized.
-    if(pageIdx === 0) return 0.08;
+    // (nearly full-width) passcode card. The hull is long enough now that it
+    // needs real clearance from the left edge too, or the aft cockpit (where
+    // the fisherman actually stands) clips off-canvas. Other pages stay
+    // randomized.
+    if(pageIdx === 0) return 0.18;
     var h = hashStr('boat-pos-' + pageIdx);
     return 0.16 + ((h >>> 16) % 68) / 100;
   }
@@ -1530,7 +1533,10 @@
   }
 
   /* ---- gate camera: starts zoomed in on the boat, eases out as the code is typed ---- */
-  var GATE_ZOOM_START = 2.5;
+  // Tuned down from 2.5 now that the boat itself is a full sportfisher with a
+  // tower — at the old zoom the frame only had room for a sliver of hull, and
+  // the fisherman (standing in the aft cockpit) fell outside it entirely.
+  var GATE_ZOOM_START = 1.35;
   function setGateOrigin(){
     if(!boat) return;
     var ox = boatScreenX(), oy = SKY_H;
