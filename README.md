@@ -73,9 +73,10 @@ python3 -m http.server 8000
 3. It's written to IndexedDB and immediately takes its place in the tank.
 4. Visitors click any fish to open it in a reading modal.
 
-The tank ships with a small set of placeholder example entries (clearly
-marked as such in their text) so an empty tank never looks broken —
-delete or replace them from Author Mode once real writing goes in.
+The tank ships pre-seeded with the author's own entries (`SEED_FISH` in
+`app.js`), so the tank is populated for any visitor without needing
+local IndexedDB data. New fish hatched later through Author Mode only
+appear elsewhere once folded back into that list.
 
 ## Project structure
 
