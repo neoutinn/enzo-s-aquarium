@@ -1487,12 +1487,21 @@
     var h = hashStr('boat-pos-' + pageIdx);
     return 0.16 + ((h >>> 16) % 68) / 100;
   }
+  // A hull hue picked from a plain hash can land anywhere on the wheel,
+  // including the blues/teals the water itself is painted in — which
+  // camouflages the boat instead of reading as a boat. Classic hull paint
+  // colors (barn red, weathered wood, mustard, forest green, deep crimson)
+  // always read clearly against blue water; the rubrail gets a warm
+  // cream/gold pulled from a separate choice so it stays a rail highlight
+  // rather than drifting hue-adjacent to a blue hull.
+  var HULL_HUE_CHOICES = [8, 24, 40, 132, 355];
+  var TRIM_HUE_CHOICES = [40, 46, 32];
   function initBoat(){
     var h = hashStr('boat-identity');
     var xFrac = boatXFracForPage(0);
     boat = {
-      hullHue: h % 360,
-      trimHue: (h % 360 + 35) % 360,
+      hullHue: HULL_HUE_CHOICES[h % HULL_HUE_CHOICES.length],
+      trimHue: TRIM_HUE_CHOICES[(h >> 3) % TRIM_HUE_CHOICES.length],
       shirtHue: (h >> 6) % 360,
       hatHue: (h >> 13) % 360,
       skinHue: 22 + ((h >> 9) % 14),
@@ -1543,19 +1552,37 @@
     canvas.style.transition = '';
   }
 
-  // The hull is drawn as a tapered stack of rows, widest at the gunwale
-  // (top) and narrowing to a keel point at the waterline — roomy enough to
-  // sit clearly larger than even the biggest fish sprite, so it reads at a
-  // believable scale next to the person standing in it.
-  var HULL_PROFILE = [
-    { dy: -13, halfW: 29 }, { dy: -12, halfW: 29 }, { dy: -11, halfW: 27 },
-    { dy: -10, halfW: 25 }, { dy: -9,  halfW: 22 }, { dy: -8,  halfW: 19 },
-    { dy: -7,  halfW: 16 }, { dy: -6,  halfW: 13 }, { dy: -5,  halfW: 10 },
-    { dy: -4,  halfW: 7  }, { dy: -3,  halfW: 5  }, { dy: -2,  halfW: 3  },
-    { dy: -1,  halfW: 2  }, { dy: 0,   halfW: 1  }
+  // The hull is a lengthwise side-profile of a classic wooden fishing dinghy:
+  // a pointed bow, a flat transom stern, and a rockered keel that dips to the
+  // waterline amidships and lifts at both ends. It's built from named stations
+  // (f = -1 stern .. 1 bow) giving {topDy, bottomDy} relative to "by", linearly
+  // interpolated per column — long enough to dwarf even the biggest fish sprite.
+  var HULL_HL = 65; // half-length in px; the hull is HULL_HL*2 px long
+  var HULL_STATIONS = [
+    { f: -1.00, topDy: -12, bottomDy: -4  },
+    { f: -0.75, topDy: -14, bottomDy: -1  },
+    { f: -0.45, topDy: -15, bottomDy: 0   },
+    { f: -0.15, topDy: -16, bottomDy: -1  },
+    { f:  0.15, topDy: -17, bottomDy: -3  },
+    { f:  0.45, topDy: -19, bottomDy: -7  },
+    { f:  0.72, topDy: -22, bottomDy: -14 },
+    { f:  0.90, topDy: -25, bottomDy: -22 },
+    { f:  1.00, topDy: -27, bottomDy: -27 }
   ];
-  var DECK_DY = HULL_PROFILE[0].dy; // y of the top gunwale row, relative to "by"
-  var FISHERMAN_STAND_OFF = 20; // px from the boat's center the fisherman stands, near the bow
+  function hullStationAt(f){
+    if(f <= HULL_STATIONS[0].f) return HULL_STATIONS[0];
+    for(var i=1;i<HULL_STATIONS.length;i++){
+      var b = HULL_STATIONS[i];
+      if(f <= b.f){
+        var a = HULL_STATIONS[i-1];
+        var k = (f - a.f) / (b.f - a.f);
+        return { topDy: a.topDy + (b.topDy-a.topDy)*k, bottomDy: a.bottomDy + (b.bottomDy-a.bottomDy)*k };
+      }
+    }
+    return HULL_STATIONS[HULL_STATIONS.length-1];
+  }
+  function hullTopDyAt(c){ return hullStationAt(c/HULL_HL).topDy; }
+  var FISHERMAN_STAND_OFF = 32; // px forward of center the fisherman stands (toward the bow)
 
   // Where the fishing line meets the rod tip (above water) and the water's
   // surface (where the bobber sits) — shared by drawBoat and the reel-in animation.
@@ -1563,9 +1590,9 @@
     if(!boat) return { x: W/2, y: SKY_H-10, waterX: W/2, waterY: SKY_H, faceDir: 1 };
     var bx = boatScreenX();
     var by = Math.round(SKY_H + waveY(bx) - 1);
-    var deckY = by + DECK_DY;
+    var deckY = by + hullTopDyAt(FISHERMAN_STAND_OFF);
     var px = bx + boat.faceDir*FISHERMAN_STAND_OFF;
-    var rodTipX = px + boat.faceDir*10, rodTipY = deckY-4;
+    var rodTipX = px + boat.faceDir*12, rodTipY = deckY-6;
     return { x: rodTipX, y: rodTipY, waterX: rodTipX, waterY: SKY_H + waveY(rodTipX), faceDir: boat.faceDir };
   }
   function drawBoat(){
@@ -1574,32 +1601,59 @@
         hatHue = boat.hatHue, skinHue = boat.skinHue, faceDir = boat.faceDir;
     var bx = boatScreenX();
     var by = Math.round(SKY_H + waveY(bx) - 1);
-    var deckY = by + DECK_DY;
+    var deckY = by + hullTopDyAt(FISHERMAN_STAND_OFF);
 
-    /* hull: banded shading from a bright gunwale rim down to a shadowed keel */
-    for(var hr=0; hr<HULL_PROFILE.length; hr++){
-      var row = HULL_PROFILE[hr];
-      if(hr < 2) ctx.fillStyle = 'hsl(' + trimHue + ' 55% 58%)';
-      else if(hr < 7) ctx.fillStyle = 'hsl(' + hullHue + ' 46% 36%)';
-      else if(hr < 11) ctx.fillStyle = 'hsl(' + hullHue + ' 44% 30%)';
-      else ctx.fillStyle = 'hsl(' + hullHue + ' 42% 24%)';
-      ctx.fillRect(bx - row.halfW, by + row.dy, row.halfW*2 + 1, 1);
+    /* hull: pointed bow, flat transom, rockered keel — banded from a bright
+       rubrail down through the planked body to a cream waterline stripe and
+       a shadowed keel, with a two-tone alternation for a plank-seam texture */
+    for(var c=-HULL_HL; c<HULL_HL; c++){
+      var st = hullStationAt(c/HULL_HL);
+      var colX = bx + c*faceDir;
+      var topY = Math.round(by + st.topDy), botY = Math.round(by + st.bottomDy);
+      var h = botY - topY + 1;
+      if(h <= 1){
+        ctx.fillStyle = 'hsl(' + trimHue + ' 58% 60%)';
+        ctx.fillRect(colX, topY, 1, Math.max(1, h));
+        continue;
+      }
+      ctx.fillStyle = 'hsl(' + trimHue + ' 58% 60%)';
+      ctx.fillRect(colX, topY, 1, 1); // rubrail
+      var stripeOn = h >= 6;
+      var bodyBottom = stripeOn ? botY-2 : botY-1;
+      if(bodyBottom >= topY+1){
+        ctx.fillStyle = (Math.abs(c) % 6 < 3) ? 'hsl(' + hullHue + ' 46% 37%)' : 'hsl(' + hullHue + ' 44% 33%)';
+        ctx.fillRect(colX, topY+1, 1, bodyBottom-(topY+1)+1);
+      }
+      if(stripeOn){
+        ctx.fillStyle = 'hsl(40 40% 80%)';
+        ctx.fillRect(colX, botY-1, 1, 1);
+      }
+      ctx.fillStyle = 'hsl(' + hullHue + ' 40% 20%)';
+      ctx.fillRect(colX, botY, 1, 1); // keel
     }
 
-    /* bench seat on the far side, and a mast + pennant at the stern */
+    /* bench seat and a coiled rope on deck */
+    var benchC = -40, benchX = bx + benchC*faceDir, benchY = Math.round(by + hullTopDyAt(benchC) + 2);
     ctx.fillStyle = 'hsl(28 32% 26%)';
-    ctx.fillRect(bx - faceDir*15 - 5, deckY+2, 10, 1);
-    var mastX = bx - faceDir*26;
+    ctx.fillRect(benchX-5, benchY, 10, 1);
+    var ropeC = 18, ropeX = bx + ropeC*faceDir, ropeY = Math.round(by + hullTopDyAt(ropeC) + 2);
+    ctx.fillStyle = 'hsl(35 35% 55%)';
+    ctx.fillRect(ropeX-1, ropeY, 2, 1);
+    ctx.fillRect(ropeX, ropeY-1, 1, 2);
+
+    /* mast + pennant near the stern */
+    var mastC = -58, mastX = bx + mastC*faceDir, mastDeckY = Math.round(by + hullTopDyAt(mastC));
     ctx.fillStyle = 'hsl(28 28% 28%)';
-    for(var mi=0; mi<6; mi++) ctx.fillRect(mastX, deckY-mi, 1, 1);
+    for(var mi=0; mi<7; mi++) ctx.fillRect(mastX, mastDeckY-mi, 1, 1);
     ctx.fillStyle = 'hsl(' + trimHue + ' 60% 55%)';
-    ctx.fillRect(mastX - faceDir*3, deckY-6, 3, 1);
-    ctx.fillRect(mastX - faceDir*2, deckY-5, 2, 1);
+    ctx.fillRect(mastX - faceDir*3, mastDeckY-7, 3, 1);
+    ctx.fillRect(mastX - faceDir*2, mastDeckY-6, 2, 1);
 
     /* oar stowed diagonally across the near gunwale */
+    var oarBaseC = -48, oarTipC = -18;
+    var oarBaseX = bx + oarBaseC*faceDir, oarBaseY = by + hullTopDyAt(oarBaseC) + 3;
+    var oarTipX = bx + oarTipC*faceDir, oarTipY = by + hullTopDyAt(oarTipC) - 6;
     ctx.fillStyle = 'hsl(30 26% 32%)';
-    var oarBaseX = bx + faceDir*6, oarBaseY = deckY+3;
-    var oarTipX = bx + faceDir*24, oarTipY = deckY-8;
     for(var oi=0; oi<=10; oi++){
       var ox = oarBaseX + (oarTipX-oarBaseX)*(oi/10);
       var oy = oarBaseY + (oarTipY-oarBaseY)*(oi/10);
@@ -1614,24 +1668,26 @@
       : 0;
     var px = bx + faceDir*FISHERMAN_STAND_OFF + lean;
     ctx.fillStyle = 'hsl(' + hatHue + ' 55% 45%)';
-    ctx.fillRect(px-1, deckY-5, 2, 1);
+    ctx.fillRect(px-1, deckY-7, 3, 1);
     ctx.fillStyle = 'hsl(' + skinHue + ' 45% 55%)';
-    ctx.fillRect(px-1, deckY-4, 2, 2);
+    ctx.fillRect(px-1, deckY-6, 3, 2);
     ctx.fillStyle = 'hsl(' + shirtHue + ' 55% 42%)';
-    ctx.fillRect(px-1, deckY-2, 2, 3);
+    ctx.fillRect(px-1, deckY-4, 3, 3);
+    ctx.fillStyle = 'hsl(20 25% 16%)';
+    ctx.fillRect(px-1, deckY-1, 3, 1);
     ctx.fillStyle = 'hsl(' + skinHue + ' 45% 50%)';
-    ctx.fillRect(px + faceDir, deckY-1, 1, 1);
+    ctx.fillRect(px + faceDir, deckY-3, 1, 1);
 
     if(reelPhase === 'victory'){
       /* arm raised overhead, holding the catch up in the air */
       ctx.fillStyle = 'hsl(' + skinHue + ' 45% 50%)';
-      for(var ay = deckY-2; ay >= deckY-10; ay--) ctx.fillRect(px + faceDir, ay, 1, 1);
+      for(var ay = deckY-3; ay >= deckY-13; ay--) ctx.fillRect(px + faceDir, ay, 1, 1);
       return;
     }
 
     /* rod + line + bobber, bending toward the fish while one is hooked */
-    var rodBaseX = px + faceDir, rodBaseY = deckY-1;
-    var baseTipX = px + faceDir*10, baseTipY = deckY-4;
+    var rodBaseX = px + faceDir, rodBaseY = deckY-3;
+    var baseTipX = px + faceDir*12, baseTipY = deckY-6;
     var rodTipX = baseTipX, rodTipY = baseTipY;
     var fcx = null, fcy = null;
     if((reelPhase === 'pull' || reelPhase === 'rise') && reelAnim.fish){
@@ -1759,9 +1815,9 @@
   function victoryHoldPos(f){
     var bx = boatScreenX();
     var by = Math.round(SKY_H + waveY(bx) - 1);
-    var deckY = by + DECK_DY;
+    var deckY = by + hullTopDyAt(FISHERMAN_STAND_OFF);
     var raiseX = bx + boat.faceDir*(FISHERMAN_STAND_OFF+1);
-    var raiseY = deckY - 11; // just above the fully raised arm (arm tip sits at deckY-10)
+    var raiseY = deckY - 14; // just above the fully raised arm (arm tip sits at deckY-13)
     return { x: raiseX - f.w/2, y: raiseY - f.h };
   }
   function startReelIn(f){
