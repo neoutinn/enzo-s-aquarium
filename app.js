@@ -781,19 +781,52 @@
     var v = parseInt(hex.replace('#',''), 16);
     return [(v>>16)&255, (v>>8)&255, v&255];
   }
-  function lerpColor(hexA, hexB, k){
-    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+  // Accepts '#hex' or an already-built 'rgb()'/'rgba()' string, so a color
+  // that was lerped once can be fed into a second lerp (used to chain the
+  // vertical and day/night blends when building dithered sky/water bands).
+  function anyToRgb(c){
+    if(c.charAt(0) === '#') return hexToRgb(c);
+    var m = c.match(/rgba?\(([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+)/);
+    return m ? [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3])] : [0,0,0];
+  }
+  function lerpColor(colorA, colorB, k){
+    var a = anyToRgb(colorA), b = anyToRgb(colorB);
     var r = Math.round(a[0]+(b[0]-a[0])*k);
     var g = Math.round(a[1]+(b[1]-a[1])*k);
     var bl = Math.round(a[2]+(b[2]-a[2])*k);
     return 'rgb(' + r + ',' + g + ',' + bl + ')';
   }
-  function lerpColorAlpha(hexA, hexB, k, alpha){
-    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+  function lerpColorAlpha(colorA, colorB, k, alpha){
+    var a = anyToRgb(colorA), b = anyToRgb(colorB);
     var r = Math.round(a[0]+(b[0]-a[0])*k);
     var g = Math.round(a[1]+(b[1]-a[1])*k);
     var bl = Math.round(a[2]+(b[2]-a[2])*k);
     return 'rgba(' + r + ',' + g + ',' + bl + ',' + alpha + ')';
+  }
+
+  /* ---- ordered dithering (4x4 Bayer matrix) ----
+     A flat canvas fill only ever shows exactly the colors we tell it to; a
+     32-bit-era sprite/background looked denser mostly because artists faked
+     more tones than the hardware really had by alternating two solid colors
+     pixel-by-pixel in a fixed pattern. Used throughout the tank renderer
+     below in place of the old flat bands and smooth canvas gradients. */
+  var BAYER4 = [
+    [ 0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [ 3, 11, 1, 9],
+    [15, 7, 13, 5]
+  ];
+  function bayer(x, y){
+    return (BAYER4[((y%4)+4)%4][((x%4)+4)%4] + 0.5) / 16; // 0..1, evenly spaced
+  }
+  // Quantizes value (0..1) into `bands` discrete steps, dithering exactly at
+  // the boundary between two adjacent steps instead of hard-cutting.
+  function ditherBand(value, bands, x, y){
+    var scaled = clamp01(value) * (bands - 1);
+    var lo = Math.floor(scaled);
+    var frac = scaled - lo;
+    if(frac > bayer(x, y) && lo < bands - 1) lo++;
+    return lo;
   }
 
   /* ---- day / night cycle state ---- */
@@ -1065,16 +1098,30 @@
     ctx.fillStyle = color;
     ctx.fillRect(0, y0, W, y1-y0);
   }
+  var SKY_BANDS = 6;
   function drawSky(offsetX){
     offsetX = offsetX || 0;
     var df = skyDayFactor;
     var topColor = lerpColor('#050914', '#8fd3ff', df);
     var horizonColor = lerpColor('#131c30', '#eaf6ff', df);
-    var grad = ctx.createLinearGradient(0, 0, 0, SKY_H);
-    grad.addColorStop(0, topColor);
-    grad.addColorStop(1, horizonColor);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, SKY_H + 3); // +3 covers waveY()'s max dip so no gap shows through at the waterline
+    var skyH = SKY_H + 3; // +3 covers waveY()'s max dip so no gap shows through at the waterline
+    var bandH = skyH / SKY_BANDS;
+    for(var bi=0; bi<SKY_BANDS; bi++){
+      var y0 = Math.round(bi*bandH), y1 = Math.round((bi+1)*bandH);
+      ctx.fillStyle = lerpColor(topColor, horizonColor, bi/(SKY_BANDS-1));
+      ctx.fillRect(0, y0, W, y1-y0);
+    }
+    // dithered seam between each pair of bands so the vertical gradient
+    // reads as one continuous fade rather than flat stacked stripes
+    for(var bs=0; bs<SKY_BANDS-1; bs++){
+      var seamY = Math.round((bs+1)*bandH);
+      var cA = lerpColor(topColor, horizonColor, bs/(SKY_BANDS-1));
+      var cB = lerpColor(topColor, horizonColor, (bs+1)/(SKY_BANDS-1));
+      for(var sx=0; sx<W; sx++){
+        ctx.fillStyle = bayer(sx, seamY) > 0.5 ? cA : cB;
+        ctx.fillRect(sx, seamY-1, 1, 2);
+      }
+    }
 
     var starAlpha = 1 - df;
     if(starAlpha > 0.02){
@@ -1176,15 +1223,18 @@
   function drawWater(offsetX){
     offsetX = offsetX || 0;
     var pad = Math.ceil(Math.abs(offsetX)) + 4;
+    var roundOff = Math.round(offsetX);
     var df = skyDayFactor;
     var bands = [
-      { c: lerpColor('#123a5c','#3fb3e6', df), frac:0.30 },
-      { c: lerpColor('#0c2846','#2a94cf', df), frac:0.30 },
-      { c: lerpColor('#081c33','#1c76ad', df), frac:0.22 },
-      { c: lerpColor('#051425','#125786', df), frac:0.18 }
+      { c: lerpColor('#123a5c','#3fb3e6', df), frac:0.24 },
+      { c: lerpColor('#0e3050','#33a0d8', df), frac:0.22 },
+      { c: lerpColor('#0c2846','#2a94cf', df), frac:0.20 },
+      { c: lerpColor('#081c33','#1c76ad', df), frac:0.18 },
+      { c: lerpColor('#051425','#125786', df), frac:0.16 }
     ];
     var y = SKY_H;
     var totalH = H - SAND_H - SKY_H;
+    var prevColor = null;
     for(var i=0;i<bands.length;i++){
       var bh = Math.round(totalH * bands[i].frac);
       if(i === 0){
@@ -1195,18 +1245,31 @@
         }
       } else {
         drawBand(y, y+bh, bands[i].c);
+        // dithered seam blending into the band above, so the steps read as
+        // one deepening gradient instead of flat stacked stripes
+        for(var sx=-pad; sx<W+pad; sx++){
+          ctx.fillStyle = bayer(sx+roundOff, y) > 0.5 ? prevColor : bands[i].c;
+          ctx.fillRect(sx+roundOff, y-1, 1, 2);
+        }
       }
-      ctx.fillStyle = 'rgba(255,255,255,0.07)';
-      for(var x=-pad; x<W+pad; x+=2) ctx.fillRect(x+offsetX, y+bh-1, 1, 1);
+      prevColor = bands[i].c;
       y += bh;
     }
     if(y < H - SAND_H) drawBand(y, H-SAND_H, lerpColor('#051425','#125786', df));
+
+    /* sand: dithered grain instead of flat color + evenly-spaced speckles,
+       for a denser, less mechanical-looking texture */
     ctx.fillStyle = lerpColor('#3d290f','#8a5424', df);
     ctx.fillRect(0, H-SAND_H, W, SAND_H);
-    ctx.fillStyle = 'rgba(255,205,120,' + (0.14+0.14*df).toFixed(3) + ')';
-    for(var sx=-pad; sx<W+pad; sx+=3) ctx.fillRect(sx+offsetX + (sx%6===0?0:1), H-SAND_H+2, 1,1);
-    ctx.fillStyle = 'rgba(60,30,8,0.35)';
-    for(var sx2=-pad+1; sx2<W+pad; sx2+=5) ctx.fillRect(sx2+offsetX, H-SAND_H+7, 2,2);
+    for(var gy=0; gy<SAND_H; gy++){
+      for(var gx=-pad; gx<W+pad; gx++){
+        var grain = bayer(gx+roundOff, gy*3+1);
+        if(grain > 0.82) ctx.fillStyle = 'rgba(255,205,120,' + (0.18+0.16*df).toFixed(3) + ')';
+        else if(grain < 0.1) ctx.fillStyle = 'rgba(45,22,6,0.30)';
+        else continue;
+        ctx.fillRect(gx+roundOff, H-SAND_H+gy, 1, 1);
+      }
+    }
 
     ctx.fillStyle = lerpColorAlpha('#0c2032','#eaf8ff', df, 0.35+0.3*df);
     for(var lx=-pad; lx<W+pad; lx++){
@@ -1295,6 +1358,8 @@
     ctx.fillRect(x-4, baseY-2, 9, 3);
     ctx.fillStyle = '#65636a';
     ctx.fillRect(x-2, baseY-4, 5, 2);
+    ctx.fillStyle = '#8a888f';
+    ctx.fillRect(x-2, baseY-4, 2, 1);
     ctx.fillStyle = '#242327';
     ctx.fillRect(x-4, baseY, 9, 1);
   }
@@ -1304,6 +1369,8 @@
     ctx.fillRect(x-2, baseY-2, 5, 1);
     ctx.fillStyle = 'hsl(' + hue + ' 60% 60%)';
     ctx.fillRect(x-1, baseY-2, 1, 2);
+    ctx.fillStyle = 'hsl(' + hue + ' 70% 92%)';
+    ctx.fillRect(x-2, baseY-2, 1, 1);
   }
   function drawStarfish(x, baseY, hue){
     ctx.fillStyle = 'hsl(' + hue + ' 78% 55%)';
@@ -1313,12 +1380,20 @@
     ctx.fillRect(x-2, baseY, 1, 1);
     ctx.fillRect(x+2, baseY, 1, 1);
     ctx.fillRect(x-1, baseY-1, 3, 1);
+    ctx.fillStyle = 'hsl(' + hue + ' 85% 72%)';
+    ctx.fillRect(x, baseY-4, 1, 1);
+    ctx.fillStyle = 'hsl(' + hue + ' 60% 38%)';
+    ctx.fillRect(x, baseY, 1, 1);
   }
   function drawCoralBranch(x, baseY, hue, sway){
     ctx.fillStyle = 'hsl(' + hue + ' 72% 55%)';
     ctx.fillRect(x + Math.round(sway*0.3), baseY-7, 2, 7);
     ctx.fillRect(x - 3 + Math.round(sway*0.5), baseY-4, 2, 4);
     ctx.fillRect(x + 3 + Math.round(sway*0.5), baseY-3, 2, 3);
+    ctx.fillStyle = 'hsl(' + hue + ' 90% 75%)';
+    ctx.fillRect(x + Math.round(sway*0.3), baseY-7, 2, 1);
+    ctx.fillStyle = 'hsl(' + hue + ' 55% 32%)';
+    ctx.fillRect(x - 3 + Math.round(sway*0.5), baseY-1, 2, 1);
   }
   function drawPebbles(x, baseY, hue){
     ctx.fillStyle = 'hsl(' + hue + ' 20% 45%)';
@@ -1331,14 +1406,20 @@
     ctx.fillRect(x-6, baseY-6, 12, 6);
     ctx.fillStyle = '#3d2513';
     ctx.fillRect(x-6, baseY-6, 12, 2);
+    ctx.fillStyle = '#7a4d28';
+    ctx.fillRect(x-6, baseY-4, 12, 1);
     ctx.fillStyle = '#e0b84b';
     ctx.fillRect(x-1, baseY-5, 2, 2);
+    ctx.fillStyle = '#fbe38a';
+    ctx.fillRect(x-1, baseY-5, 1, 1);
     ctx.fillStyle = '#7a4d28';
     ctx.fillRect(x-7, baseY-1, 14, 1);
   }
   function drawSandcastle(x, baseY){
     ctx.fillStyle = '#d9a86a';
     ctx.fillRect(x-6, baseY-6, 13, 6);
+    ctx.fillStyle = '#f0c98a';
+    ctx.fillRect(x-6, baseY-6, 13, 1);
     ctx.fillStyle = '#b8834a';
     ctx.fillRect(x-6, baseY-1, 13, 1);
     ctx.fillStyle = '#e6bb82';
@@ -1664,12 +1745,35 @@
     ctx.fill();
     ctx.globalCompositeOperation = prevOp;
   }
+  // Per-column top/bottom row of the body fill (chars 'B'/'b'), used to turn
+  // each body column into a top-to-bottom shading ramp. Computed once per
+  // sprite array and cached on it — the same handful of sprite arrays are
+  // reused by every fish of a given species, only the palette differs.
+  function bodySpans(sprite){
+    if(sprite.__spans) return sprite.__spans;
+    var cols = sprite[0].length, spans = new Array(cols);
+    for(var c=0;c<cols;c++){
+      var top=-1, bottom=-1;
+      for(var r=0;r<sprite.length;r++){
+        var ch = sprite[r][c];
+        if(ch === 'B' || ch === 'b'){
+          if(top === -1) top = r;
+          bottom = r;
+        }
+      }
+      spans[c] = { top: top, bottom: bottom };
+    }
+    sprite.__spans = spans;
+    return spans;
+  }
   // Shared sprite renderer used by both the swimming tank fish and the
-  // zoomed modal portrait. Adds a silhouette outline, scale glints on the
-  // body, and ray striping on fins so sprites read as textured rather than
-  // flat color blocks — sprite art itself is untouched, this is a render pass.
+  // zoomed modal portrait. Adds a silhouette outline, a dithered multi-band
+  // shading ramp + scale-glint texture on the body, a specular rim along its
+  // top edge, and two-tone ray striping on fins — sprite art itself is
+  // untouched, this is entirely a render pass on top of it.
   function drawFishSprite(gctx, sprite, palette, originX, originY, cell, facingRight){
     var pupilSize = Math.max(1, Math.floor(cell/2));
+    var spans = bodySpans(sprite);
     function filledAt(r,c){
       if(r<0 || r>=sprite.length) return false;
       var row = sprite[r];
@@ -1695,16 +1799,50 @@
         var px = originX+col2*cell, py = originY+r2*cell;
         gctx.fillStyle = palette[ch];
         gctx.fillRect(px, py, cell, cell);
+
         if(ch === 'E'){
           var offX = facingRight ? cell-pupilSize : 0;
           gctx.fillStyle = palette['P'];
           gctx.fillRect(px+offX, py + Math.floor((cell-pupilSize)/2), pupilSize, pupilSize);
-        } else if((ch === 'B' || ch === 'b') && cell >= 3){
-          gctx.fillStyle = ((r2+c2) % 2 === 0) ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
-          gctx.fillRect(px, py, Math.ceil(cell/2), Math.ceil(cell/2));
-        } else if((ch === 'F' || ch === 'f' || ch === 'T') && cell >= 2 && c2 % 2 === 0){
-          gctx.fillStyle = 'rgba(0,0,0,0.15)';
-          gctx.fillRect(px, py, Math.max(1, Math.floor(cell/3)), cell);
+          continue;
+        }
+
+        if(ch === 'B' || ch === 'b'){
+          var span = spans[c2];
+          var norm = (span.bottom > span.top) ? (r2 - span.top) / (span.bottom - span.top) : 0;
+          var band = ditherBand(norm, 4, px, py); // 0 = top highlight .. 3 = bottom shadow
+          if(band === 0) gctx.fillStyle = 'rgba(255,255,255,0.22)';
+          else if(band === 1) gctx.fillStyle = 'rgba(255,255,255,0.06)';
+          else if(band === 2) gctx.fillStyle = 'rgba(8,6,4,0.10)';
+          else gctx.fillStyle = 'rgba(8,6,4,0.26)';
+          gctx.fillRect(px, py, cell, cell);
+
+          if(cell >= 3){
+            // dithered scale-glint texture, denser and less mechanical than
+            // a flat checkerboard so the body reads with more perceived tones
+            var g = bayer(px, py);
+            gctx.fillStyle = ((px+py) % 2 === 0)
+              ? 'rgba(255,255,255,' + (g*0.16).toFixed(3) + ')'
+              : 'rgba(6,4,3,' + (g*0.14).toFixed(3) + ')';
+            gctx.fillRect(px, py, cell, cell);
+          }
+
+          if(r2 === span.top){
+            gctx.fillStyle = 'rgba(255,255,255,0.30)';
+            gctx.fillRect(px, py, cell, Math.max(1, Math.floor(cell/3)));
+          }
+          continue;
+        }
+
+        if((ch === 'F' || ch === 'f' || ch === 'T') && cell >= 2){
+          var rayW = Math.max(1, Math.floor(cell/3));
+          if(c2 % 2 === 0){
+            gctx.fillStyle = 'rgba(0,0,0,0.18)';
+            gctx.fillRect(px, py, rayW, cell);
+          } else {
+            gctx.fillStyle = 'rgba(255,255,255,0.10)';
+            gctx.fillRect(px, py, rayW, cell);
+          }
         }
       }
     }

@@ -34,6 +34,7 @@
     --danger:#ff4d5e;
     --danger-dim:#b52d3d;
     --notch:10px;
+    --panel-lite:#153350;
   }
 
   *{ box-sizing:border-box; }
@@ -59,7 +60,8 @@
     padding:5px;
   }
   .frame-inner{
-    background:var(--panel);
+    background-color:var(--panel);
+    background-image: repeating-linear-gradient(45deg, var(--panel-lite) 0 1px, transparent 1px 3px);
     clip-path: polygon(
       0 calc(var(--notch) - 5px), calc(var(--notch) - 5px) 0, calc(100% - (var(--notch) - 5px)) 0, 100% calc(var(--notch) - 5px),
       100% calc(100% - (var(--notch) - 5px)), calc(100% - (var(--notch) - 5px)) 100%, calc(var(--notch) - 5px) 100%, 0 calc(100% - (var(--notch) - 5px))
@@ -80,16 +82,16 @@
     padding:10px 14px;
     background:var(--foam);
     color:var(--ink);
-    box-shadow: inset -3px -3px 0 var(--foam-dim), inset 3px 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--panel-edge);
+    box-shadow: inset -1px -1px 0 rgba(0,0,0,.22), inset -3px -3px 0 var(--foam-dim), inset 1px 1px 0 rgba(255,255,255,.5), inset 3px 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--panel-edge), 0 4px 0 rgba(0,0,0,.25);
     transition: filter .15s ease, transform .08s ease, box-shadow .12s ease;
   }
   .btn:hover{ filter:brightness(1.08); }
   .btn:active{ transform:translateY(2px); box-shadow: inset -2px -2px 0 var(--foam-dim), 0 1px 0 var(--panel-edge); }
   .btn:focus-visible{ outline:3px solid var(--sand); outline-offset:2px; }
   .btn[disabled]{ opacity:.45; cursor:not-allowed; }
-  .btn.coral{ background:var(--coral); box-shadow: inset -3px -3px 0 var(--coral-dim), inset 3px 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--panel-edge); }
-  .btn.ghost{ background:var(--panel); color:var(--sand); box-shadow: inset -3px -3px 0 var(--panel-edge), inset 3px 3px 0 rgba(255,255,255,.06), 0 3px 0 var(--panel-edge); }
-  .btn.danger{ background:var(--danger); box-shadow: inset -3px -3px 0 var(--danger-dim), inset 3px 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--panel-edge); }
+  .btn.coral{ background:var(--coral); box-shadow: inset -1px -1px 0 rgba(0,0,0,.22), inset -3px -3px 0 var(--coral-dim), inset 1px 1px 0 rgba(255,255,255,.5), inset 3px 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--panel-edge), 0 4px 0 rgba(0,0,0,.25); }
+  .btn.ghost{ background:var(--panel); color:var(--sand); box-shadow: inset -1px -1px 0 rgba(0,0,0,.3), inset -3px -3px 0 var(--panel-edge), inset 1px 1px 0 rgba(255,255,255,.12), inset 3px 3px 0 rgba(255,255,255,.06), 0 3px 0 var(--panel-edge), 0 4px 0 rgba(0,0,0,.25); }
+  .btn.danger{ background:var(--danger); box-shadow: inset -1px -1px 0 rgba(0,0,0,.22), inset -3px -3px 0 var(--danger-dim), inset 1px 1px 0 rgba(255,255,255,.5), inset 3px 3px 0 rgba(255,255,255,.35), 0 3px 0 var(--panel-edge), 0 4px 0 rgba(0,0,0,.25); }
   .btn.small{ padding:7px 10px; font-size:11px; }
 
   .pixel-input{
@@ -136,7 +138,7 @@
     font-family:'Press Start 2P', monospace;
     font-size:20px;
     color:var(--foam);
-    text-shadow:2px 2px 0 var(--panel-edge), 5px 5px 0 rgba(255,106,61,.32);
+    text-shadow:1px 1px 0 rgba(255,255,255,.16), 2px 2px 0 var(--panel-edge), 5px 5px 0 rgba(255,106,61,.32);
     letter-spacing:.03em;
     white-space:nowrap;
   }
@@ -246,7 +248,7 @@
     width:58px; height:38px;
     font-family:'Silkscreen', monospace; font-weight:700; font-size:16px;
     background:var(--panel); color:var(--sand); border:none; cursor:pointer;
-    box-shadow: inset -2px -2px 0 var(--panel-edge), inset 2px 2px 0 rgba(255,255,255,.08), 0 2px 0 var(--panel-edge);
+    box-shadow: inset -1px -1px 0 rgba(0,0,0,.3), inset -2px -2px 0 var(--panel-edge), inset 1px 1px 0 rgba(255,255,255,.14), inset 2px 2px 0 rgba(255,255,255,.08), 0 2px 0 var(--panel-edge), 0 3px 0 rgba(0,0,0,.25);
     transition: filter .12s ease, transform .08s ease, box-shadow .1s ease;
   }
   .keypad button.wide{ font-size:10px; letter-spacing:.02em; }
