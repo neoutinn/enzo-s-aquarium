@@ -2040,12 +2040,23 @@
   function loadLibrary(){
     applyAdminUI();
     dbGetAll().then(function(all){
+      // A device may still have baked-in seed fish from an older version of
+      // SEED_FISH (e.g. the original placeholder set) cached in its local
+      // IndexedDB from a previous visit. Author-made fish never get a
+      // 'seed-' id (see uid()), so any 'seed-' record no longer present in
+      // the current SEED_FISH is a leftover from a prior seed list — drop it
+      // so the library always matches what's actually baked into app.js.
+      var currentSeedIds = SEED_FISH.map(function(s){ return s.id; });
+      var stale = all.filter(function(r){ return r.id.indexOf('seed-') === 0 && currentSeedIds.indexOf(r.id) === -1; });
+      all = all.filter(function(r){ return stale.indexOf(r) === -1; });
       all.sort(function(a,b){ return a.addedAt - b.addedAt; });
       var ids = all.map(function(r){ return r.id; });
       records = {};
       library = [];
       all.forEach(addToLibrary);
-      return seedLibrary(ids);
+      return Promise.all(stale.map(function(r){ return dbDelete(r.id); })).then(function(){
+        return seedLibrary(ids);
+      });
     }).then(function(){
       renderPage();
     }).catch(function(){
